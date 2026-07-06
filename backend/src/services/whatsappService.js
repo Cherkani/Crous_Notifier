@@ -33,10 +33,17 @@ class WhatsAppService {
 
   async load() {
     const creds = await this.readAuthData('creds')
+    const state = await getState().catch(() => null)
     const phoneNumber = this.phoneFromJid(creds?.me?.id)
-    if (phoneNumber) {
-      this.setStatus({ ...this.status, phoneNumber, state: 'disconnected' })
-      if (creds.registered) this.scheduleReconnect(1000)
+    const expectedPhoneNumber = cleanPhone(state?.settings?.whatsappPhone || phoneNumber)
+    if (creds?.registered || phoneNumber || expectedPhoneNumber) {
+      this.setStatus({
+        ...this.status,
+        phoneNumber,
+        expectedPhoneNumber,
+        state: creds?.registered ? 'reconnecting' : 'disconnected',
+      })
+      if (creds?.registered) this.scheduleReconnect(1000)
     }
   }
 
@@ -144,23 +151,21 @@ class WhatsAppService {
         const statusCode = update.lastDisconnect?.error?.output?.statusCode
         const loggedOut = statusCode === DisconnectReason.loggedOut
         const restartRequired = statusCode === DisconnectReason.restartRequired
-        const fatalSessionError = [
-          405,
+        const authInvalid = [
           DisconnectReason.badSession,
           DisconnectReason.forbidden,
           DisconnectReason.multideviceMismatch,
-          DisconnectReason.connectionReplaced,
         ].includes(statusCode)
-        if (loggedOut) await this.clearAuthState()
-        if (fatalSessionError) await this.clearAuthState()
+        const connectionReplaced = statusCode === DisconnectReason.connectionReplaced
+        if (loggedOut || authInvalid) await this.clearAuthState()
         const phoneNumber = this.phoneFromJid(state.creds.me?.id)
         this.setStatus({
-          state: loggedOut || fatalSessionError ? 'disconnected' : 'reconnecting',
+          state: loggedOut || authInvalid || connectionReplaced ? 'disconnected' : 'reconnecting',
           ready: false,
           qrCode: null,
           phoneNumber,
           expectedPhoneNumber,
-          error: loggedOut || restartRequired ? null : this.errorMessage(update.lastDisconnect?.error, fatalSessionError),
+          error: loggedOut || restartRequired ? null : this.errorMessage(update.lastDisconnect?.error, authInvalid),
         })
         if (!loggedOut && !restartRequired) {
           await notifyRuntimeError({
@@ -169,7 +174,7 @@ class WhatsAppService {
             metadata: { statusCode, phoneNumber },
           })
         }
-        if (!loggedOut && !fatalSessionError) this.scheduleReconnect(restartRequired ? 8000 : 3000)
+        if (!loggedOut && !authInvalid && !connectionReplaced) this.scheduleReconnect(restartRequired ? 8000 : 3000)
       }
     })
 

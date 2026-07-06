@@ -2,6 +2,7 @@ const express = require('express')
 const config = require('../config')
 const { addLog, getState, recordDeliveryEvent, updateState } = require('../store/mysqlStore')
 const { scrapeCrous } = require('../services/crousScraper')
+const { buildCrousSearchUrl } = require('../services/crousTargeting')
 const { sendManualNotification } = require('../services/notificationService')
 const { sendMail } = require('../services/mailService')
 const whatsapp = require('../services/whatsappService')
@@ -26,6 +27,17 @@ function assertCrousSearchUrl(value) {
   return parsed.toString()
 }
 
+function scheduleFromSettings(settings = {}) {
+  const scrapeIntervalMinutes = Number(settings.scrapeIntervalMinutes || 0)
+  const noResultWhatsAppIntervalMinutes = Number(settings.noResultWhatsAppIntervalMinutes || 0)
+  return {
+    scrapeIntervalMs: scrapeIntervalMinutes > 0 ? scrapeIntervalMinutes * 60 * 1000 : config.scrapeIntervalMs,
+    noResultWhatsAppIntervalMs: noResultWhatsAppIntervalMinutes > 0 ? noResultWhatsAppIntervalMinutes * 60 * 1000 : config.noResultWhatsAppIntervalMs,
+    noResultEmailEnabled: Boolean(settings.noResultEmailEnabled),
+    source: scrapeIntervalMinutes > 0 || noResultWhatsAppIntervalMinutes > 0 || settings.noResultEmailEnabled ? 'configuration' : 'backend env',
+  }
+}
+
 router.get('/state', async (req, res, next) => {
   try {
     const state = await getState()
@@ -37,11 +49,7 @@ router.get('/state', async (req, res, next) => {
         configured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
         from: process.env.SMTP_FROM || process.env.SMTP_USER || null,
       },
-      schedule: {
-        scrapeIntervalMs: config.scrapeIntervalMs,
-        noResultWhatsAppIntervalMs: config.noResultWhatsAppIntervalMs,
-        source: 'backend env',
-      },
+      schedule: scheduleFromSettings(publicState.settings),
     })
   } catch (error) {
     next(error)
@@ -61,10 +69,20 @@ router.patch('/settings', async (req, res, next) => {
       if (nextSettings.operationalAlertEmail !== undefined) {
         nextSettings.operationalAlertEmail = emailList(nextSettings.operationalAlertEmail)
       }
+      if (nextSettings.scrapeIntervalMinutes !== undefined) {
+        nextSettings.scrapeIntervalMinutes = nextSettings.scrapeIntervalMinutes === '' ? '' : Math.max(1, Number(nextSettings.scrapeIntervalMinutes || 1))
+      }
+      if (nextSettings.noResultWhatsAppIntervalMinutes !== undefined) {
+        nextSettings.noResultWhatsAppIntervalMinutes = nextSettings.noResultWhatsAppIntervalMinutes === '' ? '' : Math.max(1, Number(nextSettings.noResultWhatsAppIntervalMinutes || 1))
+      }
+      if (nextSettings.noResultEmailEnabled !== undefined) {
+        nextSettings.noResultEmailEnabled = Boolean(nextSettings.noResultEmailEnabled)
+      }
       draft.settings = { ...draft.settings, ...nextSettings }
       return draft.settings
     })
     await addLog({ type: 'settings', message: 'Settings updated' })
+    scheduler.restart()
     res.json({ success: true, settings })
   } catch (error) {
     next(error)
@@ -74,13 +92,20 @@ router.patch('/settings', async (req, res, next) => {
 router.post('/watches', async (req, res, next) => {
   try {
     const body = req.body || {}
-    if (!body.url) throw new Error('Crous URL is required')
+    if (!body.url && !body.targetLocation) throw new Error('Crous URL or target city/residence is required')
     const state = await getState()
-    const searchUrl = assertCrousSearchUrl(body.url.trim())
+    const target = body.url?.trim()
+      ? { url: assertCrousSearchUrl(body.url.trim()), place: null }
+      : await buildCrousSearchUrl({
+        location: body.targetLocation,
+        occupationMode: body.occupationMode || 'alone',
+        maxPrice: body.maxPrice,
+        minArea: body.minArea,
+      })
     const watch = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      name: body.name?.trim() || 'Crous search',
-      url: searchUrl,
+      name: body.name?.trim() || target.place?.label || 'Crous search',
+      url: target.url,
       enabled: body.enabled !== false,
       notifyWhatsApp: Boolean(body.notifyWhatsApp),
       notifyEmail: Boolean(body.notifyEmail),
@@ -96,7 +121,7 @@ router.post('/watches', async (req, res, next) => {
     await updateState((draft) => {
       draft.watches.unshift(watch)
     })
-    await addLog({ type: 'watch', message: `Watch created: ${watch.name}`, details: { url: watch.url } })
+    await addLog({ type: 'watch', message: `Watch created: ${watch.name}`, details: { url: watch.url, place: target.place } })
     scheduler.runOnce().catch(() => undefined)
     res.status(201).json({ success: true, watch })
   } catch (error) {

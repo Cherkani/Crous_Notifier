@@ -1,5 +1,6 @@
 const axios = require('axios')
 const cheerio = require('cheerio')
+const config = require('../config')
 
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
@@ -142,7 +143,7 @@ function parseAccommodationCard($, element, baseUrl) {
   const details = []
   const address = cleanText(card.find('p.fr-card__desc').first().text())
   if (address) details.push(address)
-  card.find('p.fr-card__detail').each((_, detail) => {
+  card.find('.fr-card__detail').each((_, detail) => {
     const text = cleanText($(detail).text())
     if (text) details.push(text)
   })
@@ -164,7 +165,7 @@ function parseAccommodationCard($, element, baseUrl) {
   }
 }
 
-async function scrapeCrous(url) {
+async function scrapeCrousPage(url) {
   const response = await axios.get(url, {
     timeout: 12000,
     headers: {
@@ -202,12 +203,31 @@ async function scrapeCrous(url) {
     throw new Error(`Crous page reported ${resultCount} result(s), but no listing cards could be parsed`)
   }
 
-  return cards
+  const nextUrl = absoluteUrl($('a.fr-pagination__link--next[href]').attr('href'), url)
+  return { cards, nextUrl, resultCount }
+}
+
+async function scrapeCrous(url) {
+  const listings = []
+  let nextUrl = url
+  let pages = 0
+
+  while (nextUrl && pages < config.crousMaxPages) {
+    const page = await scrapeCrousPage(nextUrl)
+    page.cards.forEach((listing) => {
+      if (!listings.some((existing) => existing.key === listing.key)) listings.push(listing)
+    })
+    pages += 1
+    nextUrl = page.nextUrl
+  }
+
+  return listings
 }
 
 module.exports = {
   parseAccommodationCard,
   parseResultCount,
   parseSvelteKitFetchedAccommodations,
+  scrapeCrousPage,
   scrapeCrous,
 }

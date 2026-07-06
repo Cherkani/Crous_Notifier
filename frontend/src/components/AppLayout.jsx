@@ -179,22 +179,42 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
         <div className="config-section">
           <div className="schedule-grid">
             <div>
-              <strong>Check Crous every</strong>
-              <span>{minutes(schedule.scrapeIntervalMs || 60000)} minute(s)</span>
-              <small>Backend env: SCRAPE_INTERVAL_MS</small>
+              <label>Check Crous every</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={settingsDraft.scrapeIntervalMinutes}
+                onChange={(event) => setSettingsDraft({ ...settingsDraft, scrapeIntervalMinutes: event.target.value })}
+                placeholder={String(minutes(schedule.scrapeIntervalMs || 60000))}
+              />
+              <small>Minutes. Leave empty to use env default: {minutes(schedule.scrapeIntervalMs || 60000)} minute(s).</small>
             </div>
             <div>
-              <strong>WhatsApp no-result update</strong>
-              <span>Every {minutes(schedule.noResultWhatsAppIntervalMs || 1800000)} minute(s)</span>
-              <small>Backend env: NO_RESULT_WHATSAPP_INTERVAL_MS</small>
+              <label>WhatsApp no-result update</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={settingsDraft.noResultWhatsAppIntervalMinutes}
+                onChange={(event) => setSettingsDraft({ ...settingsDraft, noResultWhatsAppIntervalMinutes: event.target.value })}
+                placeholder={String(minutes(schedule.noResultWhatsAppIntervalMs || 1800000))}
+              />
+              <small>Minutes between “no housing found” WhatsApp updates.</small>
             </div>
             <div>
-              <strong>Email sending rule</strong>
-              <span>Only when housing is found or when an issue/error happens</span>
-              <small>Email is not sent for normal no-result checks.</small>
+              <label>Email sending rule</label>
+              <select
+                value={settingsDraft.noResultEmailEnabled ? 'all' : 'important'}
+                onChange={(event) => setSettingsDraft({ ...settingsDraft, noResultEmailEnabled: event.target.value === 'all' })}
+              >
+                <option value="important">Found housing + issue/error only</option>
+                <option value="all">Also send no-result updates</option>
+              </select>
+              <small>{settingsDraft.noResultEmailEnabled ? 'Email will also send normal no-result updates.' : 'Email will not send normal no-result checks.'}</small>
             </div>
           </div>
-          <p className="config-help">These timings are read from backend environment config, so they are safe and consistent after restart.</p>
+          <p className="config-help">Saved values apply immediately and are kept in the database. Empty timing fields fall back to backend env defaults.</p>
         </div>
       )}
 

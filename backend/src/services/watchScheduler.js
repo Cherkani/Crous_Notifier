@@ -1,8 +1,9 @@
 const config = require('../config')
 const { scrapeCrous } = require('./crousScraper')
-const { notifyNewListings, notifyNoListingsWhatsApp, notifyWatchIssueEmail } = require('./notificationService')
+const { notifyNewListings, notifyNoListingsEmail, notifyNoListingsWhatsApp, notifyWatchIssueEmail } = require('./notificationService')
 const { addLog, getState, recordCheckEvent, updateState } = require('../store/mysqlStore')
 const { notifyRuntimeError } = require('./runtimeAlertService')
+const { splitValues } = require('../utils/format')
 
 function listingKey(listing) {
   return listing.key || listing.id || listing.url || listing.title
@@ -13,6 +14,7 @@ class WatchScheduler {
     this.timer = null
     this.running = false
     this.io = null
+    this.stopped = true
   }
 
   attach(io) {
@@ -21,18 +23,52 @@ class WatchScheduler {
 
   start() {
     if (this.timer) return
-    this.timer = setInterval(() => {
-      this.runOnce().catch((error) => {
-        addLog({ level: 'error', type: 'scheduler', message: 'Watcher cycle failed', details: error.message })
-        notifyRuntimeError({ source: 'scheduler', error }).catch(() => undefined)
-      })
-    }, config.scrapeIntervalMs)
-    this.runOnce().catch(() => undefined)
+    this.stopped = false
+    this.scheduleNext(0)
   }
 
   stop() {
-    if (this.timer) clearInterval(this.timer)
+    this.stopped = true
+    if (this.timer) clearTimeout(this.timer)
     this.timer = null
+  }
+
+  restart() {
+    this.stop()
+    this.start()
+  }
+
+  async getSettings() {
+    const state = await getState()
+    return state.settings || {}
+  }
+
+  async getScrapeIntervalMs() {
+    const settings = await this.getSettings().catch(() => ({}))
+    const minutes = Number(settings.scrapeIntervalMinutes || 0)
+    return minutes > 0 ? minutes * 60 * 1000 : config.scrapeIntervalMs
+  }
+
+  async getNoResultWhatsAppIntervalMs() {
+    const settings = await this.getSettings().catch(() => ({}))
+    const minutes = Number(settings.noResultWhatsAppIntervalMinutes || 0)
+    return minutes > 0 ? minutes * 60 * 1000 : config.noResultWhatsAppIntervalMs
+  }
+
+  scheduleNext(delayMs) {
+    if (this.stopped) return
+    this.timer = setTimeout(async () => {
+      this.timer = null
+      try {
+        await this.runOnce()
+      } catch (error) {
+        addLog({ level: 'error', type: 'scheduler', message: 'Watcher cycle failed', details: error.message })
+        notifyRuntimeError({ source: 'scheduler', error }).catch(() => undefined)
+      } finally {
+        const nextDelay = await this.getScrapeIntervalMs().catch(() => config.scrapeIntervalMs)
+        this.scheduleNext(nextDelay)
+      }
+    }, delayMs)
   }
 
   async runOnce() {
@@ -81,12 +117,16 @@ class WatchScheduler {
 
       if (!listings.length) {
         await addLog({ type: 'scrape', message: `No housing found for ${watch.name}` })
-        if (this.shouldSendNoResultWhatsApp(watch)) {
+        if (await this.shouldSendNoResultWhatsApp(watch)) {
           await notifyNoListingsWhatsApp(watch)
           await updateState((draft) => {
             const target = draft.watches.find((item) => item.id === watch.id)
             if (target) target.lastNoResultWhatsAppAt = new Date().toISOString()
           })
+        }
+        const state = await getState()
+        if (state.settings?.noResultEmailEnabled) {
+          await notifyNoListingsEmail(watch)
         }
         return
       }
@@ -133,10 +173,13 @@ class WatchScheduler {
     }
   }
 
-  shouldSendNoResultWhatsApp(watch) {
-    if (!watch.notifyWhatsApp || !watch.whatsappRecipient) return false
+  async shouldSendNoResultWhatsApp(watch) {
+    const settings = await this.getSettings().catch(() => ({}))
+    const recipients = splitValues(settings.defaultWhatsAppRecipient || watch.whatsappRecipient)
+    if (!watch.notifyWhatsApp || !recipients.length) return false
     if (!watch.lastNoResultWhatsAppAt) return true
-    return Date.now() - new Date(watch.lastNoResultWhatsAppAt).getTime() >= config.noResultWhatsAppIntervalMs
+    const intervalMs = await this.getNoResultWhatsAppIntervalMs()
+    return Date.now() - new Date(watch.lastNoResultWhatsAppAt).getTime() >= intervalMs
   }
 
   emitState() {

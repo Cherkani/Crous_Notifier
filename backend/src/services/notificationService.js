@@ -157,6 +157,30 @@ async function notifyNoListingsWhatsApp(watch) {
   return { ok: deliveries.some((delivery) => delivery.ok), deliveries }
 }
 
+async function notifyNoListingsEmail(watch) {
+  const state = await getState()
+  const recipients = emailRecipients(watch, state.settings)
+  if (!watch.notifyEmail || !recipients.length) return { skipped: true }
+
+  const subject = `Crous check: no housing for ${watch.name}`
+  const text = [
+    `Crous check: no housing found for ${watch.name}.`,
+    `Search: ${watch.url}`,
+    `Checked at: ${new Date().toLocaleString('fr-FR')}`,
+  ].join('\n')
+
+  const deliveries = await sendEmailToRecipients({
+    watch,
+    recipients,
+    subject,
+    text,
+    triggerType: 'no_result_heartbeat',
+    successLog: `Email no-result update sent for ${watch.name}`,
+    failureLog: `Email no-result update failed for ${watch.name}`,
+  })
+  return { ok: deliveries.some((delivery) => delivery.ok), deliveries }
+}
+
 async function notifyWatchIssueEmail(watch, error) {
   const state = await getState()
   const recipients = emailRecipients(watch, state.settings)
@@ -248,6 +272,7 @@ async function sendManualNotification({ phoneNumber, email, message }) {
 }
 
 module.exports = {
+  notifyNoListingsEmail,
   notifyNoListingsWhatsApp,
   notifyNewListings,
   notifyWatchIssueEmail,
