@@ -10,8 +10,6 @@ const pino = require('pino')
 const { getState, updateState, addLog } = require('../store/jsonStore')
 const { cleanPhone, isValidPhone } = require('../utils/format')
 
-const WA_REGISTRATION_VERSION = [2, 3000, 1033893291]
-
 class WhatsAppService {
   constructor() {
     this.socket = null
@@ -89,7 +87,6 @@ class WhatsAppService {
     const socket = makeWASocket({
       auth: state,
       browser: ['Crous Automation', 'Chrome', '120.0'],
-      version: WA_REGISTRATION_VERSION,
       printQRInTerminal: false,
       logger: pino({ level: 'silent' }),
       syncFullHistory: false,
