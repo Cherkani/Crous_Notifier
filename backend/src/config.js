@@ -13,6 +13,7 @@ const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   publicBaseUrl: process.env.PUBLIC_BASE_URL || 'https://automation.al-shifae.ma',
   scrapeIntervalMs: Number(process.env.SCRAPE_INTERVAL_MS || 60000),
+  noResultWhatsAppIntervalMs: Number(process.env.NO_RESULT_WHATSAPP_INTERVAL_MS || 30 * 60 * 1000),
   db: {
     uri: process.env.DATABASE_URL || '',
     host: process.env.MYSQL_HOST || 'localhost',

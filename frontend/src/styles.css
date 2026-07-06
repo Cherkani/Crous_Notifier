@@ -476,6 +476,30 @@ label {
   border-top: 1px solid #e7edf4;
 }
 
+.tab-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border-radius: 10px;
+  background: #eef4f7;
+}
+
+.tab-switch button {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: #607086;
+  box-shadow: none;
+}
+
+.tab-switch button.active {
+  background: white;
+  color: #0f6d5f;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
 .config-health {
   display: grid;
   gap: 6px;
@@ -496,7 +520,13 @@ label {
   gap: 10px;
 }
 
+.schedule-grid {
+  display: grid;
+  gap: 10px;
+}
+
 .sender-grid > div,
+.schedule-grid > div,
 .recipient-preview {
   display: grid;
   gap: 6px;
@@ -507,12 +537,14 @@ label {
 }
 
 .sender-grid strong,
+.schedule-grid strong,
 .recipient-preview strong {
   color: #152033;
   overflow-wrap: anywhere;
 }
 
 .sender-grid small,
+.schedule-grid small,
 .config-help,
 .recipient-preview span {
   color: #607086;
@@ -521,8 +553,27 @@ label {
   overflow-wrap: anywhere;
 }
 
+.schedule-grid span {
+  color: #0f6d5f;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
 .compact-textarea {
   min-height: 82px;
+}
+
+.message-preview {
+  min-height: 180px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #e1e8f0;
+  border-radius: 8px;
+  background: #101827;
+  color: #eaf0f7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 .summary-list {
@@ -768,6 +819,48 @@ label {
 .recipient-summary strong {
   color: #152033;
   overflow-wrap: anywhere;
+}
+
+.url-advice {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #e1e8f0;
+  background: #f8fafc;
+}
+
+.url-advice strong {
+  color: #152033;
+}
+
+.url-advice span {
+  color: #607086;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.url-advice.ready {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.url-advice.warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.url-advice.danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.config-help code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: #eef4f7;
+  color: #152033;
+  font-size: 12px;
 }
 
 .ghost {

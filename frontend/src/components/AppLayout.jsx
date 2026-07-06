@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   Activity,
   Bell,
@@ -90,6 +90,16 @@ export function Topbar({ whatsappReady, smtpReady, onRefresh }) {
 }
 
 export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, saving }) {
+  const [activeTab, setActiveTab] = useState('receivers')
+  const schedule = state?.schedule || {}
+  const minutes = (value) => Math.round((Number(value || 0) / 60000) * 10) / 10
+  const previewItems = '- Studio proche campus\n  Prix: 450 €\n  Résidence Crous exemple\n  https://trouverunlogement.lescrous.fr/accommodations/12345'
+  const previewMessage = useMemo(() => String(settingsDraft.notificationTemplate || '')
+    .replaceAll('{items}', previewItems)
+    .replaceAll('{url}', state?.watches?.[0]?.url || 'https://trouverunlogement.lescrous.fr/search?bounds=...')
+    .replaceAll('{watchName}', state?.watches?.[0]?.name || 'Crous search')
+    .replaceAll('{count}', '1'), [settingsDraft.notificationTemplate, state?.watches])
+
   return (
     <aside className="config-panel" aria-label="System configuration">
       <div className="panel-heading">
@@ -101,63 +111,109 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
         </div>
       </div>
 
-      <div className="config-section">
-        <div className="sender-grid">
-          <div>
-            <label>WhatsApp sender</label>
-            <strong>{state?.whatsapp?.phoneNumber ? `+${state.whatsapp.phoneNumber}` : state?.settings?.whatsappPhone || 'Pair WhatsApp device first'}</strong>
-            <small>One connected sender device sends to all WhatsApp receivers.</small>
+      <div className="tab-switch" role="tablist" aria-label="Configuration sections">
+        {[
+          ['receivers', 'Receivers'],
+          ['timing', 'Timing'],
+          ['preview', 'Preview'],
+        ].map(([id, label]) => (
+          <button type="button" className={activeTab === id ? 'active' : ''} onClick={() => setActiveTab(id)} key={id}>{label}</button>
+        ))}
+      </div>
+
+      {activeTab === 'receivers' && (
+        <>
+          <div className="config-section">
+            <div className="sender-grid">
+              <div>
+                <label>WhatsApp sender</label>
+                <strong>{state?.whatsapp?.phoneNumber ? `+${state.whatsapp.phoneNumber}` : state?.settings?.whatsappPhone || 'Pair WhatsApp device first'}</strong>
+                <small>One connected sender device sends to all WhatsApp receivers.</small>
+              </div>
+              <div>
+                <label>Email sender</label>
+                <strong>{state?.smtp?.from || 'SMTP sender missing'}</strong>
+                <small>Email always sends from the configured SMTP account.</small>
+              </div>
+            </div>
           </div>
-          <div>
-            <label>Email sender</label>
-            <strong>{state?.smtp?.from || 'SMTP sender missing'}</strong>
-            <small>Email always sends from the configured SMTP account.</small>
+
+          <div className="config-section">
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={Boolean(settingsDraft.operationalAlertsEnabled)}
+                onChange={(event) => setSettingsDraft({ ...settingsDraft, operationalAlertsEnabled: event.target.checked })}
+              />
+              <span>Email me on crashes and critical errors</span>
+            </label>
+            <label>Monitoring email receiver(s)</label>
+            <input
+              value={settingsDraft.operationalAlertEmail || ''}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, operationalAlertEmail: event.target.value })}
+              placeholder="admin@example.com, ops@example.com"
+            />
           </div>
+
+          <div className="config-section">
+            <label>Default email receiver(s)</label>
+            <textarea
+              className="compact-textarea"
+              value={settingsDraft.defaultEmail || ''}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultEmail: event.target.value })}
+              placeholder={'student@example.com\nparent@example.com'}
+            />
+            <label>Default WhatsApp receiver number(s)</label>
+            <textarea
+              className="compact-textarea"
+              value={settingsDraft.defaultWhatsAppRecipient || ''}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultWhatsAppRecipient: event.target.value })}
+              placeholder={'+212600000000\n+212688505361'}
+            />
+            <small className="config-help">Add multiple receivers with commas or one per line. The sender stays the connected WhatsApp device / SMTP account.</small>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'timing' && (
+        <div className="config-section">
+          <div className="schedule-grid">
+            <div>
+              <strong>Check Crous every</strong>
+              <span>{minutes(schedule.scrapeIntervalMs || 60000)} minute(s)</span>
+              <small>Backend env: SCRAPE_INTERVAL_MS</small>
+            </div>
+            <div>
+              <strong>WhatsApp no-result update</strong>
+              <span>Every {minutes(schedule.noResultWhatsAppIntervalMs || 1800000)} minute(s)</span>
+              <small>Backend env: NO_RESULT_WHATSAPP_INTERVAL_MS</small>
+            </div>
+            <div>
+              <strong>Email sending rule</strong>
+              <span>Only when housing is found or when an issue/error happens</span>
+              <small>Email is not sent for normal no-result checks.</small>
+            </div>
+          </div>
+          <p className="config-help">These timings are read from backend environment config, so they are safe and consistent after restart.</p>
         </div>
-      </div>
+      )}
 
-      <div className="config-section">
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={Boolean(settingsDraft.operationalAlertsEnabled)}
-            onChange={(event) => setSettingsDraft({ ...settingsDraft, operationalAlertsEnabled: event.target.checked })}
-          />
-          <span>Email me on crashes and critical errors</span>
-        </label>
-        <label>Monitoring email receiver(s)</label>
-        <input
-          value={settingsDraft.operationalAlertEmail || ''}
-          onChange={(event) => setSettingsDraft({ ...settingsDraft, operationalAlertEmail: event.target.value })}
-          placeholder="admin@example.com, ops@example.com"
-        />
-      </div>
-
-      <div className="config-section">
-        <label>Default email receiver(s)</label>
-        <textarea
-          className="compact-textarea"
-          value={settingsDraft.defaultEmail || ''}
-          onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultEmail: event.target.value })}
-          placeholder={'student@example.com\nparent@example.com'}
-        />
-        <label>Default WhatsApp receiver number(s)</label>
-        <textarea
-          className="compact-textarea"
-          value={settingsDraft.defaultWhatsAppRecipient || ''}
-          onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultWhatsAppRecipient: event.target.value })}
-          placeholder={'+212600000000\n+212688505361'}
-        />
-        <small className="config-help">Add multiple receivers with commas or one per line. The sender stays the connected WhatsApp device / SMTP account.</small>
-      </div>
-
-      <div className="config-section">
-        <label>Notification template</label>
-        <textarea
-          value={settingsDraft.notificationTemplate || ''}
-          onChange={(event) => setSettingsDraft({ ...settingsDraft, notificationTemplate: event.target.value })}
-        />
-      </div>
+      {activeTab === 'preview' && (
+        <>
+          <div className="config-section">
+            <label>Notification template</label>
+            <textarea
+              value={settingsDraft.notificationTemplate || ''}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, notificationTemplate: event.target.value })}
+            />
+            <small className="config-help">Available variables: {'{items}'}, {'{url}'}, {'{watchName}'}, {'{count}'}.</small>
+          </div>
+          <div className="config-section">
+            <label>Preview message</label>
+            <pre className="message-preview">{previewMessage}</pre>
+          </div>
+        </>
+      )}
 
       <button onClick={onSave} disabled={saving}><ShieldAlert size={16} /> Save configuration</button>
 

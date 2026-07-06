@@ -4,7 +4,9 @@ const { notifyNewListings, notifyNoListingsWhatsApp, notifyWatchIssueEmail } = r
 const { addLog, getState, recordCheckEvent, updateState } = require('../store/mysqlStore')
 const { notifyRuntimeError } = require('./runtimeAlertService')
 
-const NO_RESULT_WHATSAPP_INTERVAL_MS = 30 * 60 * 1000
+function listingKey(listing) {
+  return listing.key || listing.id || listing.url || listing.title
+}
 
 class WatchScheduler {
   constructor() {
@@ -51,9 +53,9 @@ class WatchScheduler {
   async checkWatch(watch) {
     try {
       const listings = await scrapeCrous(watch.url)
-      const currentTitles = listings.map((item) => item.title)
-      const previousTitles = new Set(watch.lastSeenTitles || [])
-      const newListings = listings.filter((item) => !previousTitles.has(item.title))
+      const currentKeys = listings.map(listingKey).filter(Boolean)
+      const previousKeys = new Set(watch.lastSeenTitles || [])
+      const newListings = listings.filter((item) => !previousKeys.has(listingKey(item)))
       const isFirstRun = !watch.lastCheckedAt
       const effectiveNewCount = isFirstRun ? 0 : newListings.length
 
@@ -61,7 +63,7 @@ class WatchScheduler {
         const target = draft.watches.find((item) => item.id === watch.id)
         if (!target) return
         target.lastCheckedAt = new Date().toISOString()
-        target.lastSeenTitles = currentTitles
+        target.lastSeenTitles = currentKeys
         target.lastResultCount = listings.length
         target.lastError = null
       })
@@ -134,7 +136,7 @@ class WatchScheduler {
   shouldSendNoResultWhatsApp(watch) {
     if (!watch.notifyWhatsApp || !watch.whatsappRecipient) return false
     if (!watch.lastNoResultWhatsAppAt) return true
-    return Date.now() - new Date(watch.lastNoResultWhatsAppAt).getTime() >= NO_RESULT_WHATSAPP_INTERVAL_MS
+    return Date.now() - new Date(watch.lastNoResultWhatsAppAt).getTime() >= config.noResultWhatsAppIntervalMs
   }
 
   emitState() {

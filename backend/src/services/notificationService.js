@@ -89,7 +89,12 @@ async function sendEmailToRecipients({ watch, recipients, subject, text, trigger
 
 async function notifyNewListings(watch, listings) {
   const state = await getState()
-  const items = listings.map((item) => `- ${item.title}${item.url ? `\n  ${item.url}` : ''}`).join('\n')
+  const items = listings.map((item) => [
+    `- ${item.title}`,
+    item.price ? `  Prix: ${item.price}` : null,
+    item.overview ? `  ${item.overview}` : null,
+    item.url ? `  ${item.url}` : null,
+  ].filter(Boolean).join('\n')).join('\n')
   const text = renderTemplate(state.settings.notificationTemplate, {
     items,
     url: watch.url,

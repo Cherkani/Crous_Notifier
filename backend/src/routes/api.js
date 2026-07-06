@@ -1,4 +1,5 @@
 const express = require('express')
+const config = require('../config')
 const { addLog, getState, recordDeliveryEvent, updateState } = require('../store/mysqlStore')
 const { scrapeCrous } = require('../services/crousScraper')
 const { sendManualNotification } = require('../services/notificationService')
@@ -8,6 +9,22 @@ const scheduler = require('../services/watchScheduler')
 const { emailList, isValidPhone, publicPhone, publicPhoneList } = require('../utils/format')
 
 const router = express.Router()
+
+function assertCrousSearchUrl(value) {
+  let parsed
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error('A valid Crous search URL is required')
+  }
+  if (parsed.hostname !== 'trouverunlogement.lescrous.fr') {
+    throw new Error('Crous search URL must come from trouverunlogement.lescrous.fr')
+  }
+  if (!parsed.pathname.includes('/search')) {
+    throw new Error('Crous search URL must be a search page')
+  }
+  return parsed.toString()
+}
 
 router.get('/state', async (req, res, next) => {
   try {
@@ -19,6 +36,11 @@ router.get('/state', async (req, res, next) => {
       smtp: {
         configured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
         from: process.env.SMTP_FROM || process.env.SMTP_USER || null,
+      },
+      schedule: {
+        scrapeIntervalMs: config.scrapeIntervalMs,
+        noResultWhatsAppIntervalMs: config.noResultWhatsAppIntervalMs,
+        source: 'backend env',
       },
     })
   } catch (error) {
@@ -54,10 +76,11 @@ router.post('/watches', async (req, res, next) => {
     const body = req.body || {}
     if (!body.url) throw new Error('Crous URL is required')
     const state = await getState()
+    const searchUrl = assertCrousSearchUrl(body.url.trim())
     const watch = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       name: body.name?.trim() || 'Crous search',
-      url: body.url.trim(),
+      url: searchUrl,
       enabled: body.enabled !== false,
       notifyWhatsApp: Boolean(body.notifyWhatsApp),
       notifyEmail: Boolean(body.notifyEmail),
