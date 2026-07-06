@@ -1,7 +1,10 @@
 const config = require('../config')
 const { scrapeCrous } = require('./crousScraper')
-const { notifyNewListings } = require('./notificationService')
-const { addLog, getState, updateState } = require('../store/jsonStore')
+const { notifyNewListings, notifyNoListingsWhatsApp, notifyWatchIssueEmail } = require('./notificationService')
+const { addLog, getState, recordCheckEvent, updateState } = require('../store/mysqlStore')
+const { notifyRuntimeError } = require('./runtimeAlertService')
+
+const NO_RESULT_WHATSAPP_INTERVAL_MS = 30 * 60 * 1000
 
 class WatchScheduler {
   constructor() {
@@ -19,6 +22,7 @@ class WatchScheduler {
     this.timer = setInterval(() => {
       this.runOnce().catch((error) => {
         addLog({ level: 'error', type: 'scheduler', message: 'Watcher cycle failed', details: error.message })
+        notifyRuntimeError({ source: 'scheduler', error }).catch(() => undefined)
       })
     }, config.scrapeIntervalMs)
     this.runOnce().catch(() => undefined)
@@ -51,6 +55,7 @@ class WatchScheduler {
       const previousTitles = new Set(watch.lastSeenTitles || [])
       const newListings = listings.filter((item) => !previousTitles.has(item.title))
       const isFirstRun = !watch.lastCheckedAt
+      const effectiveNewCount = isFirstRun ? 0 : newListings.length
 
       await updateState((draft) => {
         const target = draft.watches.find((item) => item.id === watch.id)
@@ -61,8 +66,26 @@ class WatchScheduler {
         target.lastError = null
       })
 
+      await recordCheckEvent({
+        watchId: watch.id,
+        watchName: watch.name,
+        status: 'success',
+        foundCount: listings.length,
+        newCount: effectiveNewCount,
+        message: listings.length
+          ? `${listings.length} listing(s), ${effectiveNewCount} new`
+          : 'No housing found',
+      })
+
       if (!listings.length) {
         await addLog({ type: 'scrape', message: `No housing found for ${watch.name}` })
+        if (this.shouldSendNoResultWhatsApp(watch)) {
+          await notifyNoListingsWhatsApp(watch)
+          await updateState((draft) => {
+            const target = draft.watches.find((item) => item.id === watch.id)
+            if (target) target.lastNoResultWhatsAppAt = new Date().toISOString()
+          })
+        }
         return
       }
 
@@ -89,8 +112,29 @@ class WatchScheduler {
         target.lastCheckedAt = new Date().toISOString()
         target.lastError = error.message
       })
+      await recordCheckEvent({
+        watchId: watch.id,
+        watchName: watch.name,
+        status: 'error',
+        foundCount: 0,
+        newCount: 0,
+        message: 'Scrape failed',
+        errorMessage: error.message,
+      })
       await addLog({ level: 'error', type: 'scrape', message: `Scrape failed for ${watch.name}`, details: error.message })
+      await notifyWatchIssueEmail(watch, error)
+      await notifyRuntimeError({
+        source: 'scrape',
+        error,
+        metadata: { watchId: watch.id, watchName: watch.name, url: watch.url },
+      })
     }
+  }
+
+  shouldSendNoResultWhatsApp(watch) {
+    if (!watch.notifyWhatsApp || !watch.whatsappRecipient) return false
+    if (!watch.lastNoResultWhatsAppAt) return true
+    return Date.now() - new Date(watch.lastNoResultWhatsAppAt).getTime() >= NO_RESULT_WHATSAPP_INTERVAL_MS
   }
 
   emitState() {

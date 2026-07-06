@@ -2,12 +2,14 @@ const makeWASocket = require('@itsukichan/baileys').default
 const {
   BufferJSON,
   DisconnectReason,
+  fetchLatestBaileysVersion,
   initAuthCreds,
   proto,
 } = require('@itsukichan/baileys')
 const QRCode = require('qrcode')
 const pino = require('pino')
-const { getState, updateState, addLog } = require('../store/jsonStore')
+const { getState, updateState, addLog } = require('../store/mysqlStore')
+const { notifyRuntimeError } = require('./runtimeAlertService')
 const { cleanPhone, isValidPhone } = require('../utils/format')
 
 class WhatsAppService {
@@ -84,9 +86,25 @@ class WhatsAppService {
   async startSocket(expectedPhoneNumber) {
     this.setStatus({ ...this.status, state: 'initializing', ready: false, qrCode: null, expectedPhoneNumber, error: null })
     const { state, saveCreds } = await this.useAuthState()
+    const waVersion = [2, 3000, 1033893291]
+    try {
+      const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion()
+      await addLog({
+        type: 'whatsapp',
+        message: `Using WhatsApp Web version ${waVersion.join('.')} for QR registration`,
+        details: { latestVersion, isLatest },
+      })
+    } catch (error) {
+      await addLog({
+        type: 'whatsapp',
+        message: `Using bundled WhatsApp Web registration version ${waVersion.join('.')}`,
+        details: error.message,
+      })
+    }
     const socket = makeWASocket({
       auth: state,
       browser: ['Crous Automation', 'Chrome', '120.0'],
+      version: waVersion,
       printQRInTerminal: false,
       logger: pino({ level: 'silent' }),
       syncFullHistory: false,
@@ -126,17 +144,32 @@ class WhatsAppService {
         const statusCode = update.lastDisconnect?.error?.output?.statusCode
         const loggedOut = statusCode === DisconnectReason.loggedOut
         const restartRequired = statusCode === DisconnectReason.restartRequired
+        const fatalSessionError = [
+          405,
+          DisconnectReason.badSession,
+          DisconnectReason.forbidden,
+          DisconnectReason.multideviceMismatch,
+          DisconnectReason.connectionReplaced,
+        ].includes(statusCode)
         if (loggedOut) await this.clearAuthState()
+        if (fatalSessionError) await this.clearAuthState()
         const phoneNumber = this.phoneFromJid(state.creds.me?.id)
         this.setStatus({
-          state: loggedOut ? 'disconnected' : 'initializing',
+          state: loggedOut || fatalSessionError ? 'disconnected' : 'reconnecting',
           ready: false,
           qrCode: null,
           phoneNumber,
           expectedPhoneNumber,
-          error: loggedOut || restartRequired ? null : this.errorMessage(update.lastDisconnect?.error),
+          error: loggedOut || restartRequired ? null : this.errorMessage(update.lastDisconnect?.error, fatalSessionError),
         })
-        if (!loggedOut) this.scheduleReconnect(restartRequired ? 8000 : 3000)
+        if (!loggedOut && !restartRequired) {
+          await notifyRuntimeError({
+            source: 'whatsapp',
+            error: update.lastDisconnect?.error || new Error('WhatsApp connection closed'),
+            metadata: { statusCode, phoneNumber },
+          })
+        }
+        if (!loggedOut && !fatalSessionError) this.scheduleReconnect(restartRequired ? 8000 : 3000)
       }
     })
 
@@ -230,7 +263,14 @@ class WhatsAppService {
     return jid?.split('@')[0]?.split(':')[0] || null
   }
 
-  errorMessage(error) {
+  errorMessage(error, fatalSessionError = false) {
+    const statusCode = error?.output?.statusCode
+    const streamCode = error?.data?.code
+    const reason = error?.data?.reason
+    const details = [statusCode && `status ${statusCode}`, streamCode && `code ${streamCode}`, reason].filter(Boolean).join(' · ')
+    const base = error instanceof Error ? error.message : 'WhatsApp connection closed'
+    if (fatalSessionError) return `${base}${details ? ` (${details})` : ''}. Session was reset; click Start / refresh QR to pair again.`
+    if (details) return `${base} (${details})`
     if (error instanceof Error) return error.message
     return 'WhatsApp connection closed'
   }

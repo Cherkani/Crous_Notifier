@@ -1,0 +1,46 @@
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  filename VARCHAR(191) NOT NULL PRIMARY KEY,
+  executed_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key VARCHAR(128) NOT NULL PRIMARY KEY,
+  setting_value JSON NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS watches (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  url TEXT NOT NULL,
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  notify_whatsapp TINYINT(1) NOT NULL DEFAULT 0,
+  notify_email TINYINT(1) NOT NULL DEFAULT 0,
+  whatsapp_recipient VARCHAR(32) NOT NULL DEFAULT '',
+  email_recipient VARCHAR(255) NOT NULL DEFAULT '',
+  last_seen_titles JSON NOT NULL,
+  last_checked_at DATETIME(3) NULL,
+  last_result_count INT NOT NULL DEFAULT 0,
+  last_error TEXT NULL,
+  created_at DATETIME(3) NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  INDEX idx_watches_enabled (enabled),
+  INDEX idx_watches_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_logs (
+  id VARCHAR(80) NOT NULL PRIMARY KEY,
+  created_at DATETIME(3) NOT NULL,
+  level VARCHAR(20) NOT NULL DEFAULT 'info',
+  type VARCHAR(64) NOT NULL DEFAULT 'system',
+  message TEXT NOT NULL,
+  details JSON NULL,
+  INDEX idx_app_logs_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS whatsapp_auth (
+  auth_key VARCHAR(191) NOT NULL PRIMARY KEY,
+  payload LONGTEXT NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

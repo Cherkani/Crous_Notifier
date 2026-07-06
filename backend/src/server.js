@@ -7,7 +7,9 @@ const config = require('./config')
 const apiRouter = require('./routes/api')
 const whatsapp = require('./services/whatsappService')
 const scheduler = require('./services/watchScheduler')
-const { addLog } = require('./store/jsonStore')
+const { addLog } = require('./store/mysqlStore')
+const { notifyRuntimeError } = require('./services/runtimeAlertService')
+const { runMigrations } = require('../scripts/migrate')
 
 const app = express()
 const server = http.createServer(app)
@@ -43,6 +45,11 @@ app.use((req, res) => {
 app.use((error, req, res, next) => {
   const message = error instanceof Error ? error.message : 'Unexpected error'
   addLog({ level: 'error', type: 'api', message, details: { method: req.method, url: req.url } }).catch(() => undefined)
+  notifyRuntimeError({
+    source: 'api',
+    error,
+    metadata: { method: req.method, url: req.url },
+  }).catch(() => undefined)
   res.status(400).json({ success: false, message })
 })
 
@@ -54,14 +61,30 @@ whatsapp.attach(io)
 scheduler.attach(io)
 
 async function bootstrap() {
+  await runMigrations()
   await whatsapp.load()
   scheduler.start()
-  server.listen(config.port, () => {
-    console.log(`Crous automation API running on http://localhost:${config.port}`)
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`Crous automation API running on http://0.0.0.0:${config.port}`)
   })
 }
 
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason))
+  addLog({ level: 'error', type: 'process', message: 'Unhandled promise rejection', details: error.message }).catch(() => undefined)
+  notifyRuntimeError({ source: 'unhandledRejection', error }).catch(() => undefined)
+})
+
+process.on('uncaughtException', (error) => {
+  addLog({ level: 'error', type: 'process', message: 'Uncaught exception', details: error.message }).catch(() => undefined)
+  notifyRuntimeError({ source: 'uncaughtException', error }).finally(() => {
+    process.exit(1)
+  })
+})
+
 bootstrap().catch((error) => {
   console.error(error)
-  process.exit(1)
+  notifyRuntimeError({ source: 'bootstrap', error }).finally(() => {
+    process.exit(1)
+  })
 })

@@ -2,7 +2,7 @@ const path = require('path')
 const dotenv = require('dotenv')
 
 const rootDir = path.resolve(__dirname, '..', '..')
-dotenv.config({ path: path.join(rootDir, '.env'), quiet: true, override: true })
+dotenv.config({ path: path.join(rootDir, '.env'), quiet: true })
 
 const config = {
   rootDir,
@@ -13,6 +13,15 @@ const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   publicBaseUrl: process.env.PUBLIC_BASE_URL || 'https://automation.al-shifae.ma',
   scrapeIntervalMs: Number(process.env.SCRAPE_INTERVAL_MS || 60000),
+  db: {
+    uri: process.env.DATABASE_URL || '',
+    host: process.env.MYSQL_HOST || 'localhost',
+    port: Number(process.env.MYSQL_PORT || 3306),
+    user: process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQL_PASSWORD || '',
+    database: process.env.MYSQL_DATABASE || 'crous_automation',
+    connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 10),
+  },
   smtp: {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),

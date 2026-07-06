@@ -30,7 +30,36 @@ Use one root `.env` file. Copy `.env.example` and fill the SMTP values.
 cp .env.example .env
 ```
 
-The app stores watches, logs, settings, and WhatsApp auth under `data/`.
+The app stores watches, logs, settings, and WhatsApp auth in MySQL.
+
+```bash
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=
+MYSQL_DATABASE=crous_automation
+```
+
+You can also use one `DATABASE_URL` instead of the individual `MYSQL_*` values.
+
+The backend automatically runs pending migrations when it starts. You can still run them manually when you want to check the database without starting the app:
+
+```bash
+npm run db:migrate
+```
+
+If you already have an old `data/state.json`, import it once after migrations:
+
+```bash
+npm run db:import-json
+```
+
+Operational crash/error emails can be configured from the right-side Configuration panel in the UI. As a fallback for database startup failures, you can also set:
+
+```bash
+OPERATIONAL_ALERT_EMAIL=admin@example.com
+OPERATIONAL_ALERTS_ENABLED=true
+```
 
 ## Features
 
