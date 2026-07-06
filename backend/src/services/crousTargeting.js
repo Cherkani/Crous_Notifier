@@ -47,8 +47,10 @@ async function resolveCrousPlace(query) {
   if (!bounds) throw new Error(`Could not calculate map bounds for "${query}"`)
 
   const properties = feature.properties || {}
+  const name = properties.name || query.trim()
+  const postcode = properties.postcode || ''
   return {
-    label: [properties.name, properties.postcode].filter(Boolean).join(' '),
+    label: postcode ? `${name} (${postcode})` : name,
     bounds,
     coordinates: feature.geometry?.coordinates || null,
     properties,
@@ -63,8 +65,9 @@ async function buildCrousSearchUrl({
 }) {
   const place = await resolveCrousPlace(location)
   const url = new URL(`/tools/${config.crousToolId}/search`, CROUS_BASE_URL)
-  url.searchParams.set('bounds', place.bounds)
   if (occupationMode) url.searchParams.set('occupationModes', occupationMode)
+  url.searchParams.set('bounds', place.bounds)
+  url.searchParams.set('locationName', place.label)
   if (maxPrice) url.searchParams.set('maxPrice', String(maxPrice))
   if (minArea) url.searchParams.set('minArea', String(minArea))
   return {
