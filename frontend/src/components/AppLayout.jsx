@@ -39,7 +39,7 @@ function Sidebar({ open, activeView, onViewChange, onToggle }) {
   return (
     <aside className="sidebar" aria-label="Primary navigation">
       <div className="sidebar-brand">
-        <div className="brand-mark">CA</div>
+        <div className="brand-mark">SC</div>
         {open && (
           <div>
             <strong>Crous Automation</strong>

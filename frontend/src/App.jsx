@@ -682,7 +682,7 @@ export default function App() {
     return (
       <div className="login-screen">
         <form className="login-card" onSubmit={submitLogin}>
-          <div className="brand-mark">CA</div>
+          <div className="brand-mark">SC</div>
           <p className="eyebrow">Crous watcher</p>
           <h1>Login required</h1>
           <p>Enter the dashboard credentials to manage Crous alerts and WhatsApp notifications.</p>
