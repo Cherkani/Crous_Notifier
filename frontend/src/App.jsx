@@ -115,6 +115,54 @@ function GraphBars({ rows, emptyText = 'No data to graph yet.' }) {
   )
 }
 
+function InsightTiles({ rows, totalLabel = 'total', emptyText = 'No data yet.' }) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0)
+
+  if (!rows.length || total === 0) {
+    return <p className="graph-empty">{emptyText}</p>
+  }
+
+  return (
+    <div className="insight-tiles">
+      <div className="insight-total">
+        <span>{totalLabel}</span>
+        <strong>{total}</strong>
+      </div>
+      {rows.map((row) => (
+        <div className={`insight-tile ${row.tone || row.label}`} key={row.label}>
+          <span>{row.label}</span>
+          <strong>{row.value}</strong>
+          <small>{Math.round((row.value / total) * 100)}%</small>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SignalBars({ rows, emptyText = 'No graph data yet.' }) {
+  const max = Math.max(...rows.map((row) => row.value), 0)
+
+  if (!rows.length || max === 0) {
+    return <p className="graph-empty">{emptyText}</p>
+  }
+
+  return (
+    <div className="signal-bars">
+      {rows.map((row) => (
+        <div className={`signal-card ${row.tone || row.label}`} key={row.label}>
+          <div>
+            <strong>{row.value}</strong>
+            <span>{row.label}</span>
+          </div>
+          <div className="signal-track">
+            <i style={{ height: `${Math.max((row.value / max) * 100, 8)}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const chartColors = {
   success: '#0f6d5f',
   sent: '#0f6d5f',
@@ -250,6 +298,11 @@ export default function App() {
   const [message, setMessage] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeView, setActiveView] = useState('dashboard')
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = window.localStorage.getItem('crous-theme')
+    if (savedTheme === 'dark' || savedTheme === 'light') return savedTheme
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  })
   const [watchForm, setWatchForm] = useState(null)
   const [settingsDraft, setSettingsDraft] = useState(settingsFromState(null))
   const [manual, setManual] = useState({ phoneNumber: '', email: '', message: 'Bonjour, ceci est un test de notification Crous.' })
@@ -265,6 +318,11 @@ export default function App() {
     setEmailTest((current) => current || next.settings?.defaultEmail || '')
     setLoading(false)
   }
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    window.localStorage.setItem('crous-theme', theme)
+  }, [theme])
 
   useEffect(() => {
     getSession()
@@ -365,6 +423,10 @@ export default function App() {
     setAuthenticated(false)
     setState(null)
     setMessage(null)
+  }
+
+  const toggleTheme = () => {
+    setTheme((current) => current === 'dark' ? 'light' : 'dark')
   }
 
   const renderDashboard = () => (
@@ -552,13 +614,18 @@ export default function App() {
 
   const renderMonitoring = () => (
     <section className="grid two">
-      <Card title="Monitoring graph" icon={<BarChart3 size={18} />}>
-        <GraphBars
+      <Card title="Monitoring health" icon={<BarChart3 size={18} />}>
+        <InsightTiles
+          rows={countRows(state.alertEmailEvents, (event) => event.status, ['sent', 'failed', 'skipped'])}
+          totalLabel="alerts"
+          emptyText="No monitoring email events to graph yet."
+        />
+        <SignalBars
           rows={countRows(state.alertEmailEvents, (event) => event.status, ['sent', 'failed', 'skipped'])}
           emptyText="No monitoring email events to graph yet."
         />
         <div className="graph-caption">
-          This reflects operational alert emails: crash/error emails, skipped alerts, and failed SMTP sends.
+          Monitoring tracks critical-alert email behavior: sent alerts, failed SMTP attempts, and skipped alerts when throttled or missing recipients.
         </div>
       </Card>
 
@@ -578,14 +645,17 @@ export default function App() {
 
   const renderLogs = () => (
     <section className="grid two">
-      <Card title="Log graph" icon={<BarChart3 size={18} />}>
-        <GraphBars
+      <Card title="Log intelligence" icon={<BarChart3 size={18} />}>
+        <InsightTiles
           rows={countRows(state.logs, (log) => log.level, ['info', 'warn', 'error'])}
+          totalLabel="logs"
           emptyText="No logs to graph yet."
         />
-        <div className="divider" />
-        <GraphBars
-          rows={countRows(state.logs, (log) => log.type)}
+        <div className="graph-caption">
+          Fast signal of system health. Errors should stay close to zero; scrape and WhatsApp logs show the watcher is actively working.
+        </div>
+        <SignalBars
+          rows={countRows(state.logs, (log) => log.type).slice(0, 8)}
           emptyText="No log types to graph yet."
         />
       </Card>
@@ -649,7 +719,7 @@ export default function App() {
       onToggleSidebar={() => setSidebarOpen((open) => !open)}
       activeView={activeView}
       onViewChange={setActiveView}
-      topbar={<Topbar whatsappReady={state.whatsapp?.ready} smtpReady={state.smtp?.configured} onRefresh={refresh} onLogout={handleLogout} />}
+      topbar={<Topbar whatsappReady={state.whatsapp?.ready} smtpReady={state.smtp?.configured} theme={theme} onToggleTheme={toggleTheme} onRefresh={refresh} onLogout={handleLogout} />}
     >
       {message && <div className={`alert ${message.type}`}>{message.text}</div>}
       {viewContent[activeView] || viewContent.dashboard}

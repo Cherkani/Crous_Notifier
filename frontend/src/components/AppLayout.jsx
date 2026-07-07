@@ -6,9 +6,11 @@ import {
   ChevronRight,
   Mail,
   MessageCircle,
+  Moon,
   RefreshCw,
   Settings,
   ShieldAlert,
+  Sun,
 } from 'lucide-react'
 
 const navItems = [
@@ -72,19 +74,64 @@ function Sidebar({ open, activeView, onViewChange, onToggle }) {
   )
 }
 
-export function Topbar({ whatsappReady, smtpReady, onRefresh, onLogout }) {
+export function Topbar({ whatsappReady, smtpReady, theme, onToggleTheme, onRefresh, onLogout }) {
   return (
     <header className="topbar">
-      <div>
-        <p className="eyebrow">Crous watcher</p>
-        <h1>Critical housing alert control center</h1>
-        <p className="topbar-copy">Watch Crous results, notify students, and keep operational failures visible.</p>
+      <div className="topbar-glow" aria-hidden="true" />
+      <div className="topbar-main">
+        <div className="topbar-icon">
+          <Bell size={22} />
+        </div>
+        <div className="topbar-copy-block">
+          <p className="eyebrow">Crous watcher</p>
+          <h1>Salma’s Crous Watch</h1>
+          <p className="topbar-copy">A gentle but vigilant monitor for Crous housing, WhatsApp alerts, and operational safety.</p>
+        </div>
+      </div>
+      <div className="topbar-illustration" aria-hidden="true">
+        <div className="crous-skyline">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="cyber-art-girl">
+          <span className="girl-head" />
+          <span className="girl-hair" />
+          <span className="girl-beret" />
+          <span className="girl-glasses" />
+          <span className="girl-hoodie" />
+          <span className="girl-arm brush-arm" />
+          <span className="girl-arm laptop-arm" />
+          <span className="girl-laptop" />
+          <span className="girl-palette" />
+          <span className="girl-brush" />
+        </div>
+        <div className="cyber-card">
+          <span />
+          <span />
+        </div>
+        <div className="paint-bubble"><span /></div>
+        <div className="code-spark code-one">&lt;/&gt;</div>
+        <div className="code-spark code-two">✦</div>
       </div>
       <div className="topbar-actions">
-        <span className={`system-pill ${whatsappReady ? 'ready' : 'pending'}`}>WhatsApp</span>
-        <span className={`system-pill ${smtpReady ? 'ready' : 'pending'}`}>SMTP</span>
-        <button className="ghost" onClick={onRefresh}><RefreshCw size={16} /> Refresh</button>
-        <button className="ghost" onClick={onLogout}>Log out</button>
+        <div className="status-cluster" aria-label="System status">
+          <span className={`system-pill ${whatsappReady ? 'ready' : 'pending'}`}>
+            <i />
+            WhatsApp
+          </span>
+          <span className={`system-pill ${smtpReady ? 'ready' : 'pending'}`}>
+            <i />
+            SMTP
+          </span>
+        </div>
+        <button className="theme-toggle" type="button" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+        </button>
+        <button className="ghost topbar-button" onClick={onRefresh}><RefreshCw size={16} /> Refresh</button>
+        <button className="ghost topbar-button" onClick={onLogout}>Log out</button>
       </div>
     </header>
   )
