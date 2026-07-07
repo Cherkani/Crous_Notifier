@@ -9,6 +9,14 @@ async function ensureDatabase() {
   if (config.db.uri) return
   const pool = createPool(null)
   try {
+    // Many production users can connect to an existing schema but are not
+    // allowed to create databases globally. Prefer using the target DB first.
+    await pool.query(`USE \`${config.db.database}\``)
+    return
+  } catch (error) {
+    if (error.code !== 'ER_BAD_DB_ERROR') {
+      throw error
+    }
     await pool.query(
       `CREATE DATABASE IF NOT EXISTS \`${config.db.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     )
