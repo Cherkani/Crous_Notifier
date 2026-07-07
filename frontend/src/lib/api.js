@@ -17,6 +17,21 @@ export async function getState() {
   return response.data
 }
 
+export async function getSession() {
+  const response = await api.get('/auth/me')
+  return response.data
+}
+
+export async function login(username, password) {
+  const response = await api.post('/auth/login', { username, password })
+  return response.data
+}
+
+export async function logout() {
+  const response = await api.post('/auth/logout')
+  return response.data
+}
+
 export function socketBaseUrl() {
   return API_BASE_URL.replace(/\/api\/?$/, '')
 }

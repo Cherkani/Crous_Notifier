@@ -10,6 +10,14 @@ const scheduler = require('./services/watchScheduler')
 const { addLog } = require('./store/mysqlStore')
 const { notifyRuntimeError } = require('./services/runtimeAlertService')
 const { runMigrations } = require('../scripts/migrate')
+const {
+  COOKIE_NAME,
+  createSessionToken,
+  cookieOptions,
+  getAuthConfig,
+  isSocketAuthenticated,
+  requireAuth,
+} = require('./auth')
 
 const app = express()
 const server = http.createServer(app)
@@ -30,6 +38,24 @@ app.use(express.urlencoded({ extended: true }))
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'crous-automation', timestamp: new Date().toISOString() })
 })
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ authenticated: true, username: req.session.username })
+})
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {}
+  const auth = getAuthConfig()
+  if (username !== auth.username || password !== auth.password) {
+    res.status(401).json({ success: false, message: 'Invalid username or password' })
+    return
+  }
+  res.cookie(COOKIE_NAME, createSessionToken(auth.username), cookieOptions(req))
+  res.json({ success: true, username: auth.username })
+})
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie(COOKIE_NAME, { path: '/' })
+  res.json({ success: true })
+})
+app.use('/api', requireAuth)
 app.use('/api', apiRouter)
 
 const frontendDist = path.join(config.rootDir, 'frontend', 'dist')
@@ -51,6 +77,11 @@ app.use((error, req, res, next) => {
     metadata: { method: req.method, url: req.url },
   }).catch(() => undefined)
   res.status(400).json({ success: false, message })
+})
+
+io.use((socket, next) => {
+  if (isSocketAuthenticated(socket)) return next()
+  next(new Error('Login required'))
 })
 
 io.on('connection', (socket) => {

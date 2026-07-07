@@ -17,7 +17,7 @@ import {
   ShieldAlert,
   Trash2,
 } from 'lucide-react'
-import { api, getState, socketBaseUrl } from './lib/api'
+import { api, getSession, getState, login, logout, socketBaseUrl } from './lib/api'
 import { AppLayout, ConfigPanel, Topbar } from './components/AppLayout'
 import { Card, StatCard, StatusBadge } from './components/ui'
 
@@ -85,6 +85,10 @@ function countRows(items = [], getKey, preferredOrder = []) {
   return [...new Set([...preferredOrder, ...Object.keys(counts)])]
     .filter((key) => counts[key] > 0 || preferredOrder.includes(key))
     .map((key) => ({ label: key, value: counts[key] || 0, tone: key }))
+}
+
+function minutesFromMs(value, fallback) {
+  return Math.round((Number(value || fallback || 0) / 60000) * 10) / 10
 }
 
 function GraphBars({ rows, emptyText = 'No data to graph yet.' }) {
@@ -237,6 +241,9 @@ function SentByRecipientHistogram({ data }) {
 }
 
 export default function App() {
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authenticated, setAuthenticated] = useState(false)
+  const [loginDraft, setLoginDraft] = useState({ username: '', password: '' })
   const [state, setState] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -260,15 +267,25 @@ export default function App() {
   }
 
   useEffect(() => {
-    refresh().catch((error) => {
-      setMessage({ type: 'error', text: error.message })
-      setLoading(false)
-    })
+    getSession()
+      .then(() => {
+        setAuthenticated(true)
+        return refresh()
+      })
+      .catch(() => {
+        setAuthenticated(false)
+        setLoading(false)
+      })
+      .finally(() => setAuthLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (!authenticated) return undefined
     const socket = io(socketBaseUrl(), { withCredentials: true })
     socket.on('state:update', () => refresh().catch(() => undefined))
     socket.on('whatsapp:status', (status) => setState((current) => current ? { ...current, whatsapp: status } : current))
     return () => socket.disconnect()
-  }, [])
+  }, [authenticated])
 
   const enabledWatches = useMemo(() => state?.watches?.filter((watch) => watch.enabled).length || 0, [state])
   const deliveryMetrics = state?.deliveryMetrics || {}
@@ -326,6 +343,30 @@ export default function App() {
   }), 'WhatsApp test message sent.')
   const sendEmailTest = async () => withSaving(() => api.post('/email/test', { email: emailTest }), 'SMTP test email sent.')
 
+  const submitLogin = async (event) => {
+    event.preventDefault()
+    setSaving(true)
+    setMessage(null)
+    try {
+      await login(loginDraft.username, loginDraft.password)
+      setAuthenticated(true)
+      setLoading(true)
+      await refresh()
+    } catch (error) {
+      setMessage({ type: 'error', text: error.response?.data?.message || error.message })
+    } finally {
+      setSaving(false)
+      setAuthLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    await logout().catch(() => undefined)
+    setAuthenticated(false)
+    setState(null)
+    setMessage(null)
+  }
+
   const renderDashboard = () => (
     <>
       <section className="stats-grid">
@@ -368,8 +409,9 @@ export default function App() {
             <span><strong>{deliveryMetrics.whatsapp_failed || 0}</strong> WhatsApp failed</span>
             <span><strong>{deliveryMetrics.email_success || 0}</strong> Email succeeded</span>
             <span><strong>{deliveryMetrics.email_failed || 0}</strong> Email failed</span>
-            <span><strong>30 min</strong> WhatsApp no-result heartbeat</span>
-            <span><strong>Found/Error only</strong> Email schedule rule</span>
+            <span><strong>{minutesFromMs(state.schedule?.scrapeIntervalMs, 60000)} min</strong> Crous check interval</span>
+            <span><strong>{minutesFromMs(state.schedule?.noResultWhatsAppIntervalMs, 1800000)} min</strong> WhatsApp no-result heartbeat</span>
+            <span><strong>{state.settings?.noResultEmailEnabled ? 'All checks' : 'Found/Error only'}</strong> Email schedule rule</span>
           </div>
         </Card>
       </section>
@@ -562,8 +604,27 @@ export default function App() {
     </section>
   )
 
-  if (loading) {
+  if (authLoading || loading) {
     return <div className="screen-center"><Loader2 className="spin" /> Loading automation...</div>
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="login-screen">
+        <form className="login-card" onSubmit={submitLogin}>
+          <div className="brand-mark">CA</div>
+          <p className="eyebrow">Crous watcher</p>
+          <h1>Login required</h1>
+          <p>Enter the dashboard credentials to manage Crous alerts and WhatsApp notifications.</p>
+          {message && <div className={`alert ${message.type}`}>{message.text}</div>}
+          <label>Username</label>
+          <input value={loginDraft.username} onChange={(event) => setLoginDraft({ ...loginDraft, username: event.target.value })} autoComplete="username" />
+          <label>Password</label>
+          <input value={loginDraft.password} onChange={(event) => setLoginDraft({ ...loginDraft, password: event.target.value })} type="password" autoComplete="current-password" />
+          <button disabled={saving}>{saving ? <Loader2 className="spin" size={16} /> : null} Log in</button>
+        </form>
+      </div>
+    )
   }
 
   if (!state) {
@@ -588,7 +649,7 @@ export default function App() {
       onToggleSidebar={() => setSidebarOpen((open) => !open)}
       activeView={activeView}
       onViewChange={setActiveView}
-      topbar={<Topbar whatsappReady={state.whatsapp?.ready} smtpReady={state.smtp?.configured} onRefresh={refresh} />}
+      topbar={<Topbar whatsappReady={state.whatsapp?.ready} smtpReady={state.smtp?.configured} onRefresh={refresh} onLogout={handleLogout} />}
     >
       {message && <div className={`alert ${message.type}`}>{message.text}</div>}
       {viewContent[activeView] || viewContent.dashboard}

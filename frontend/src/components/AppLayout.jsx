@@ -72,7 +72,7 @@ function Sidebar({ open, activeView, onViewChange, onToggle }) {
   )
 }
 
-export function Topbar({ whatsappReady, smtpReady, onRefresh }) {
+export function Topbar({ whatsappReady, smtpReady, onRefresh, onLogout }) {
   return (
     <header className="topbar">
       <div>
@@ -84,6 +84,7 @@ export function Topbar({ whatsappReady, smtpReady, onRefresh }) {
         <span className={`system-pill ${whatsappReady ? 'ready' : 'pending'}`}>WhatsApp</span>
         <span className={`system-pill ${smtpReady ? 'ready' : 'pending'}`}>SMTP</span>
         <button className="ghost" onClick={onRefresh}><RefreshCw size={16} /> Refresh</button>
+        <button className="ghost" onClick={onLogout}>Log out</button>
       </div>
     </header>
   )
@@ -93,6 +94,11 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
   const [activeTab, setActiveTab] = useState('receivers')
   const schedule = state?.schedule || {}
   const minutes = (value) => Math.round((Number(value || 0) / 60000) * 10) / 10
+  const envCheckMinutes = minutes(schedule.scrapeIntervalMs || 60000)
+  const envNoResultMinutes = minutes(schedule.noResultWhatsAppIntervalMs || 1800000)
+  const effectiveCheckMinutes = Number(settingsDraft.scrapeIntervalMinutes || 0) || envCheckMinutes
+  const effectiveNoResultMinutes = Number(settingsDraft.noResultWhatsAppIntervalMinutes || 0) || envNoResultMinutes
+  const scheduleSource = schedule.source === 'configuration' ? 'saved configuration' : 'backend env default'
   const previewItems = '- Studio proche campus\n  Prix: 450 €\n  Résidence Crous exemple\n  https://trouverunlogement.lescrous.fr/accommodations/12345'
   const previewMessage = useMemo(() => String(settingsDraft.notificationTemplate || '')
     .replaceAll('{items}', previewItems)
@@ -186,9 +192,12 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
                 step="1"
                 value={settingsDraft.scrapeIntervalMinutes}
                 onChange={(event) => setSettingsDraft({ ...settingsDraft, scrapeIntervalMinutes: event.target.value })}
-                placeholder={String(minutes(schedule.scrapeIntervalMs || 60000))}
+                placeholder={String(envCheckMinutes)}
               />
-              <small>Minutes. Leave empty to use env default: {minutes(schedule.scrapeIntervalMs || 60000)} minute(s).</small>
+              <small>
+                The watcher executes one full Crous check every {effectiveCheckMinutes} minute(s), based on the {scheduleSource}.
+                Leave empty to use env default: {envCheckMinutes} minute(s).
+              </small>
             </div>
             <div>
               <label>WhatsApp no-result update</label>
@@ -198,9 +207,12 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
                 step="1"
                 value={settingsDraft.noResultWhatsAppIntervalMinutes}
                 onChange={(event) => setSettingsDraft({ ...settingsDraft, noResultWhatsAppIntervalMinutes: event.target.value })}
-                placeholder={String(minutes(schedule.noResultWhatsAppIntervalMs || 1800000))}
+                placeholder={String(envNoResultMinutes)}
               />
-              <small>Minutes between “no housing found” WhatsApp updates.</small>
+              <small>
+                If a check finds no housing, WhatsApp can send “not yet anything” updates every {effectiveNoResultMinutes} minute(s).
+                New housing alerts are sent as soon as a check detects them.
+              </small>
             </div>
             <div>
               <label>Email sending rule</label>
@@ -211,10 +223,17 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
                 <option value="important">Found housing + issue/error only</option>
                 <option value="all">Also send no-result updates</option>
               </select>
-              <small>{settingsDraft.noResultEmailEnabled ? 'Email will also send normal no-result updates.' : 'Email will not send normal no-result checks.'}</small>
+              <small>
+                {settingsDraft.noResultEmailEnabled
+                  ? 'Email will also send normal no-result updates.'
+                  : 'Email sends found housing alerts plus required monitoring logs for crashes, scrape issues, and critical errors. It will not send normal no-result checks.'}
+              </small>
             </div>
           </div>
-          <p className="config-help">Saved values apply immediately and are kept in the database. Empty timing fields fall back to backend env defaults.</p>
+          <p className="config-help">
+            Saved timing values apply immediately and are kept in the database. Current effective plan: check Crous every {effectiveCheckMinutes} minute(s);
+            WhatsApp no-result heartbeat every {effectiveNoResultMinutes} minute(s); email for found housing and monitoring issues.
+          </p>
         </div>
       )}
 

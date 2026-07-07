@@ -1,7 +1,17 @@
+const config = require('../config')
 const { addLog, getState, recordDeliveryEvent } = require('../store/mysqlStore')
 const { sendMail } = require('./mailService')
 const whatsapp = require('./whatsappService')
 const { renderTemplate, splitValues } = require('../utils/format')
+
+function minutesFromMs(value, fallback) {
+  return Math.round((Number(value || fallback || 0) / 60000) * 10) / 10
+}
+
+function effectiveMinutes(settings = {}, settingKey, envMs) {
+  const minutes = Number(settings[settingKey] || 0)
+  return minutes > 0 ? minutes : minutesFromMs(envMs)
+}
 
 function whatsappRecipients(watch, settings = {}) {
   return splitValues(settings.defaultWhatsAppRecipient || watch.whatsappRecipient)
@@ -140,8 +150,12 @@ async function notifyNoListingsWhatsApp(watch) {
   const recipients = whatsappRecipients(watch, state.settings)
   if (!watch.notifyWhatsApp || !recipients.length) return { skipped: true }
 
+  const checkEvery = effectiveMinutes(state.settings, 'scrapeIntervalMinutes', config.scrapeIntervalMs)
+  const noResultEvery = effectiveMinutes(state.settings, 'noResultWhatsAppIntervalMinutes', config.noResultWhatsAppIntervalMs)
   const text = [
-    `Crous check: no housing found for ${watch.name}.`,
+    `Crous check: not yet anything for ${watch.name}.`,
+    `The system is still checking Crous every ${checkEvery} minute(s).`,
+    `If nothing is found, this WhatsApp update is sent every ${noResultEvery} minute(s).`,
     `Search: ${watch.url}`,
     `Checked at: ${new Date().toLocaleString('fr-FR')}`,
   ].join('\n')

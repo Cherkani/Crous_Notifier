@@ -10,6 +10,7 @@
 
 body {
   margin: 0;
+  min-width: 320px;
 }
 
 button, input, textarea, select {
@@ -29,6 +30,7 @@ button {
   cursor: pointer;
   font-weight: 800;
   min-height: 42px;
+  white-space: nowrap;
 }
 
 button:disabled {
@@ -69,6 +71,46 @@ label {
   justify-content: center;
   gap: 10px;
   color: #607086;
+}
+
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(15, 109, 95, 0.18), transparent 34%),
+    linear-gradient(135deg, #101827, #182235 48%, #0f6d5f);
+}
+
+.login-card {
+  width: min(100%, 430px);
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.96);
+  box-shadow: 0 30px 70px rgba(0,0,0,0.26);
+}
+
+.login-card .brand-mark {
+  margin-bottom: 4px;
+}
+
+.login-card h1,
+.login-card p {
+  margin: 0;
+}
+
+.login-card h1 {
+  color: #101827;
+  font-size: 28px;
+}
+
+.login-card p:not(.eyebrow) {
+  color: #607086;
+  line-height: 1.5;
 }
 
 .spin {
@@ -331,6 +373,7 @@ label {
   margin: 0 0 18px;
   color: #101827;
   font-size: 17px;
+  min-width: 0;
 }
 
 .form, .card {
@@ -592,6 +635,7 @@ label {
   border-bottom: 1px solid #edf2f7;
   padding-bottom: 10px;
   color: #607086;
+  min-width: 0;
 }
 
 .summary-list span:last-child {
@@ -601,6 +645,7 @@ label {
 
 .summary-list strong {
   color: #152033;
+  overflow-wrap: anywhere;
 }
 
 .graph-list {
@@ -934,18 +979,28 @@ label {
 }
 
 @media (max-width: 900px) {
+  body {
+    background: #f4f6f8;
+  }
+
   .app-shell,
   .app-shell.sidebar-closed {
     grid-template-columns: 1fr;
   }
 
   .sidebar {
-    position: sticky;
+    position: fixed;
+    left: 10px;
+    right: 10px;
     bottom: 0;
     top: auto;
+    max-width: calc(100vw - 20px);
     min-height: auto;
-    z-index: 10;
+    z-index: 30;
     order: 2;
+    padding: 8px;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -18px 38px rgba(15, 23, 42, 0.18);
   }
 
   .sidebar-brand,
@@ -955,13 +1010,24 @@ label {
 
   .sidebar-nav {
     display: flex;
-    justify-content: space-around;
+    justify-content: flex-start;
+    gap: 6px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-item {
     justify-content: center;
     padding: 0;
-    width: 46px;
+    width: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 12px;
   }
 
   .nav-item span {
@@ -969,7 +1035,12 @@ label {
   }
 
   .workbench {
-    padding: 14px;
+    padding: 12px 12px 86px;
+    gap: 14px;
+  }
+
+  .content-stack {
+    gap: 14px;
   }
 
   .topbar,
@@ -983,8 +1054,50 @@ label {
   }
 
   .topbar {
+    padding: 16px;
     align-items: flex-start;
     flex-direction: column;
+    gap: 14px;
+  }
+
+  .topbar h1 {
+    font-size: 22px;
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .topbar-actions button {
+    flex: 1 1 130px;
+  }
+
+  .system-pill {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .card,
+  .stat,
+  .config-panel {
+    padding: 16px;
+    border-radius: 10px;
+  }
+
+  .card h3 {
+    margin-bottom: 12px;
+    line-height: 1.3;
+  }
+
+  .stat {
+    min-height: auto;
+  }
+
+  .stat strong {
+    font-size: 21px;
+    overflow-wrap: anywhere;
   }
 
   .sender-grid {
@@ -994,9 +1107,226 @@ label {
   .donut-widget {
     grid-template-columns: 1fr;
     justify-items: center;
+    min-height: auto;
+  }
+
+  .donut-chart {
+    width: 132px;
+    height: 132px;
+  }
+
+  .donut-chart > div {
+    width: 84px;
+    height: 84px;
+  }
+
+  .histogram {
+    height: 150px;
+    gap: 6px;
+  }
+
+  .histogram-bars {
+    padding: 6px 3px;
+  }
+
+  .histogram-column small {
+    font-size: 9px;
+    transform: rotate(-20deg);
+  }
+
+  .logs,
+  .event-table {
+    max-height: 420px;
+  }
+
+  .log,
+  .event-row {
+    gap: 6px;
+  }
+
+  .watch {
+    gap: 12px;
+  }
+
+  .watch .actions,
+  .form .actions {
+    width: 100%;
+  }
+
+  .watch .actions button,
+  .form .actions button {
+    flex: 1 1 120px;
+  }
+
+  .summary-list span {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .tab-switch {
+    gap: 5px;
+    padding: 5px;
+  }
+
+  .tab-switch button {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .qr-box {
+    min-height: 220px;
+  }
+
+  .qr-box img {
+    max-width: 220px;
+  }
+
+  .message-preview {
+    max-height: 320px;
+    overflow: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  button {
+    min-height: 44px;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .login-screen {
+    align-items: stretch;
+    padding: 14px;
+  }
+
+  .login-card {
+    align-self: center;
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .login-card h1 {
+    font-size: 24px;
+  }
+
+  .workbench {
+    padding: 10px 10px 84px;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .topbar-copy {
+    font-size: 13px;
+  }
+
+  .stats-grid {
+    gap: 10px;
+  }
+
+  .card,
+  .stat,
+  .config-panel,
+  .topbar {
+    padding: 14px;
+  }
+
+  .checks {
+    align-items: stretch;
+  }
+
+  .checks label {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e1e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+
+  .actions {
+    align-items: stretch;
+  }
+
+  .actions button,
+  .topbar-actions button {
+    width: 100%;
   }
 
   .topbar-actions {
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar-actions button {
+    grid-column: span 1;
+  }
+
+  .system-pill {
+    min-height: 38px;
+  }
+
+  .sidebar {
+    left: 6px;
+    right: 6px;
+    max-width: calc(100vw - 12px);
+  }
+
+  .nav-item {
+    width: 46px;
+    min-width: 46px;
+  }
+
+  .donut-legend span,
+  .histogram-legend span,
+  .recipient-summary span,
+  .graph-meta {
+    font-size: 12px;
+  }
+
+  .histogram {
+    height: 132px;
+  }
+
+  .histogram-bars span {
+    width: 8px;
+  }
+
+  .logs,
+  .event-table {
+    max-height: 360px;
+  }
+
+  .qr-box {
+    min-height: 190px;
+  }
+
+  .qr-box img {
+    max-width: 190px;
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .tab-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .histogram {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: auto;
+    align-items: stretch;
+  }
+
+  .histogram-column {
+    min-height: 92px;
   }
 }
