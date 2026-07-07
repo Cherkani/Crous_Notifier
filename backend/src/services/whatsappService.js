@@ -17,6 +17,8 @@ class WhatsAppService {
     this.socket = null
     this.io = null
     this.reconnectTimer = null
+    this.supervisorTimer = null
+    this.reconnectAttempts = 0
     this.status = {
       state: 'disconnected',
       ready: false,
@@ -29,21 +31,24 @@ class WhatsAppService {
 
   attach(io) {
     this.io = io
+    this.startSupervisor()
   }
 
   async load() {
+    this.startSupervisor()
     const creds = await this.readAuthData('creds')
     const state = await getState().catch(() => null)
     const phoneNumber = this.phoneFromJid(creds?.me?.id)
     const expectedPhoneNumber = cleanPhone(state?.settings?.whatsappPhone || phoneNumber)
-    if (creds?.registered || phoneNumber || expectedPhoneNumber) {
+    const hasUsableAuth = this.hasUsableAuth(creds)
+    if (hasUsableAuth || phoneNumber || expectedPhoneNumber) {
       this.setStatus({
         ...this.status,
         phoneNumber,
         expectedPhoneNumber,
-        state: creds?.registered ? 'reconnecting' : 'disconnected',
+        state: hasUsableAuth ? 'reconnecting' : 'disconnected',
       })
-      if (creds?.registered) this.scheduleReconnect(1000)
+      if (hasUsableAuth) this.scheduleReconnect(1000)
     }
   }
 
@@ -55,11 +60,13 @@ class WhatsAppService {
     const expectedPhoneNumber = cleanPhone(phoneNumber || this.status.expectedPhoneNumber || this.status.phoneNumber)
     if (!isValidPhone(expectedPhoneNumber)) throw new Error('A valid WhatsApp phone number is required')
     if (this.socket) return this.getStatus()
+    this.clearReconnectTimer()
     return this.startSocket(expectedPhoneNumber)
   }
 
   async logout() {
     this.clearReconnectTimer()
+    this.reconnectAttempts = 0
     const socket = this.socket
     this.socket = null
     if (socket) {
@@ -91,6 +98,7 @@ class WhatsAppService {
   }
 
   async startSocket(expectedPhoneNumber) {
+    this.clearReconnectTimer()
     this.setStatus({ ...this.status, state: 'initializing', ready: false, qrCode: null, expectedPhoneNumber, error: null })
     const { state, saveCreds } = await this.useAuthState()
     const waVersion = [2, 3000, 1033893291]
@@ -122,6 +130,7 @@ class WhatsAppService {
       retryRequestDelayMs: 2000,
       maxMsgRetryCount: 5,
       qrTimeout: 120000,
+      connectCooldownMs: 3000,
       transactionOpts: {
         maxCommitRetries: 15,
         delayBetweenTriesMs: 3000,
@@ -129,8 +138,18 @@ class WhatsAppService {
     })
     this.socket = socket
 
-    socket.ev.on('creds.update', saveCreds)
+    socket.ev.on('creds.update', async () => {
+      try {
+        await saveCreds()
+      } catch (error) {
+        await addLog({ level: 'error', type: 'whatsapp', message: 'Failed to save WhatsApp credentials', details: error.message }).catch(() => undefined)
+      }
+    })
     socket.ev.on('connection.update', async (update) => {
+      if (update.connection === 'connecting') {
+        this.setStatus({ ...this.status, state: 'connecting', ready: false, qrCode: null, expectedPhoneNumber, error: null })
+      }
+
       if (update.qr) {
         const qrCode = await QRCode.toDataURL(update.qr, {
           width: 512,
@@ -142,11 +161,19 @@ class WhatsAppService {
 
       if (update.connection === 'open') {
         const phoneNumber = this.phoneFromJid(socket.user?.id) || this.phoneFromJid(state.creds.me?.id)
+        this.reconnectAttempts = 0
         this.setStatus({ state: 'connected', ready: true, qrCode: null, phoneNumber, expectedPhoneNumber, error: null })
+        if (phoneNumber) {
+          await updateState((draft) => {
+            draft.settings.whatsappPhone = phoneNumber
+          }).catch(() => undefined)
+        }
         await addLog({ type: 'whatsapp', message: `WhatsApp connected: +${phoneNumber || expectedPhoneNumber}` })
       }
 
       if (update.connection === 'close') {
+        socket.ev.removeAllListeners('connection.update')
+        socket.ev.removeAllListeners('creds.update')
         this.socket = null
         const statusCode = update.lastDisconnect?.error?.output?.statusCode
         const loggedOut = statusCode === DisconnectReason.loggedOut
@@ -159,6 +186,9 @@ class WhatsAppService {
         const connectionReplaced = statusCode === DisconnectReason.connectionReplaced
         if (loggedOut || authInvalid) await this.clearAuthState()
         const phoneNumber = this.phoneFromJid(state.creds.me?.id)
+        if (!loggedOut && !authInvalid && !connectionReplaced) {
+          this.reconnectAttempts += 1
+        }
         this.setStatus({
           state: loggedOut || authInvalid || connectionReplaced ? 'disconnected' : 'reconnecting',
           ready: false,
@@ -188,17 +218,47 @@ class WhatsAppService {
 
   scheduleReconnect(delayMs) {
     if (this.reconnectTimer) return
+    const backoffMs = Math.min(delayMs + Math.max(this.reconnectAttempts - 1, 0) * 2000, 30000)
+    this.setStatus({
+      ...this.status,
+      state: this.status.ready ? this.status.state : 'reconnecting',
+      ready: false,
+      qrCode: null,
+    })
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       if (!this.socket) this.start(this.status.expectedPhoneNumber || this.status.phoneNumber).catch((error) => {
         this.setStatus({ ...this.status, state: 'error', ready: false, error: error.message })
       })
-    }, delayMs)
+    }, backoffMs)
   }
 
   clearReconnectTimer() {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
+  }
+
+  startSupervisor() {
+    if (this.supervisorTimer) return
+    this.supervisorTimer = setInterval(async () => {
+      if (this.socket || this.reconnectTimer) return
+      const creds = await this.readAuthData('creds').catch(() => null)
+      if (!this.hasUsableAuth(creds)) return
+      const state = await getState().catch(() => null)
+      const expectedPhoneNumber = cleanPhone(state?.settings?.whatsappPhone || this.status.expectedPhoneNumber || this.phoneFromJid(creds?.me?.id))
+      if (!isValidPhone(expectedPhoneNumber)) return
+      this.setStatus({
+        ...this.status,
+        state: this.status.ready ? this.status.state : 'reconnecting',
+        expectedPhoneNumber,
+        error: null,
+      })
+      this.scheduleReconnect(1000)
+    }, 15000)
+  }
+
+  hasUsableAuth(creds) {
+    return Boolean(creds?.registered || creds?.me?.id || (creds?.account && creds?.advSecretKey))
   }
 
   async useAuthState() {
