@@ -1,9 +1,42 @@
+const fs = require('fs/promises')
+const path = require('path')
 const config = require('../config')
 const { sendMail } = require('./mailService')
 const { addLog, getState, recordAlertEmailEvent } = require('../store/mysqlStore')
 
 const recentAlerts = new Map()
 const ALERT_THROTTLE_MS = Number(process.env.ALERT_THROTTLE_MS || 15 * 60 * 1000)
+const RUNTIME_ALERT_STATE_FILE = path.join(config.dataDir, 'runtime-alert-state.json')
+let persistedAlertsLoaded = false
+
+async function loadPersistedAlerts() {
+  if (persistedAlertsLoaded) return
+  persistedAlertsLoaded = true
+  try {
+    const raw = await fs.readFile(RUNTIME_ALERT_STATE_FILE, 'utf8')
+    const parsed = JSON.parse(raw)
+    for (const [key, value] of Object.entries(parsed || {})) {
+      const timestamp = Number(value || 0)
+      if (timestamp > 0) recentAlerts.set(key, timestamp)
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+}
+
+async function persistAlerts() {
+  await fs.mkdir(config.dataDir, { recursive: true })
+  const cutoff = Date.now() - ALERT_THROTTLE_MS * 2
+  const snapshot = {}
+  for (const [key, value] of recentAlerts.entries()) {
+    if (value >= cutoff) {
+      snapshot[key] = value
+      continue
+    }
+    recentAlerts.delete(key)
+  }
+  await fs.writeFile(RUNTIME_ALERT_STATE_FILE, JSON.stringify(snapshot, null, 2))
+}
 
 function truthy(value) {
   return value === true ||
@@ -20,12 +53,14 @@ function splitRecipients(value) {
     .filter(Boolean)
 }
 
-function shouldSend(fingerprint) {
+async function shouldSend(fingerprint) {
+  await loadPersistedAlerts().catch(() => undefined)
   const key = String(fingerprint || 'runtime').slice(0, 500)
   const now = Date.now()
   const lastSentAt = recentAlerts.get(key) || 0
   if (now - lastSentAt < ALERT_THROTTLE_MS) return false
   recentAlerts.set(key, now)
+  await persistAlerts().catch(() => undefined)
   return true
 }
 
@@ -73,7 +108,7 @@ async function notifyRuntimeError({ source, error, metadata = null }) {
     normalizedError.message,
   ].join('|')
 
-  if (!shouldSend(fingerprint)) return false
+  if (!(await shouldSend(fingerprint))) return false
 
   const alertConfig = await getAlertConfig().catch(() => ({ enabled: false, recipients: [] }))
   if (!alertConfig.enabled || !alertConfig.recipients.length) {

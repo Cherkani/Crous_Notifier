@@ -18,6 +18,7 @@ const config = {
   noResultWhatsAppIntervalMs: Number(process.env.NO_RESULT_WHATSAPP_INTERVAL_MS || 30 * 60 * 1000),
   db: {
     uri: process.env.DATABASE_URL || '',
+    socketPath: process.env.MYSQL_SOCKET || '',
     host: process.env.MYSQL_HOST || 'localhost',
     port: Number(process.env.MYSQL_PORT || 3306),
     user: process.env.MYSQL_USER || 'root',

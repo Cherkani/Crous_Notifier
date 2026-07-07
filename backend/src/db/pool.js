@@ -14,14 +14,19 @@ function createPool(database = config.db.database) {
   }
 
   const options = {
-    host: config.db.host,
-    port: config.db.port,
     user: config.db.user,
     password: config.db.password,
     waitForConnections: true,
     connectionLimit: config.db.connectionLimit,
     namedPlaceholders: true,
     timezone: 'Z',
+  }
+
+  if (config.db.socketPath) {
+    options.socketPath = config.db.socketPath
+  } else {
+    options.host = config.db.host
+    options.port = config.db.port
   }
 
   if (database) options.database = database
