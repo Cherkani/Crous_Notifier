@@ -30,7 +30,7 @@ function emptyWatchForm(state) {
     maxPrice: '',
     minArea: '',
     notifyWhatsApp: true,
-    notifyEmail: true,
+    notifyEmail: Boolean(state?.settings?.emailSendingEnabled),
     whatsappRecipient: state?.settings?.defaultWhatsAppRecipient || state?.settings?.whatsappPhone || '',
     emailRecipient: state?.settings?.defaultEmail || '',
   }
@@ -40,7 +40,10 @@ function settingsFromState(state) {
   return {
     defaultEmail: state?.settings?.defaultEmail || '',
     defaultWhatsAppRecipient: state?.settings?.defaultWhatsAppRecipient || '',
-    operationalAlertsEnabled: state?.settings?.operationalAlertsEnabled !== false,
+    emailSendingEnabled: Boolean(state?.settings?.emailSendingEnabled),
+    emailDeliveryMode: state?.settings?.emailDeliveryMode || 'daily_summary',
+    emailDailySummaryHour: state?.settings?.emailDailySummaryHour ?? 23,
+    operationalAlertsEnabled: Boolean(state?.settings?.operationalAlertsEnabled),
     operationalAlertEmail: state?.settings?.operationalAlertEmail || '',
     scrapeIntervalMinutes: state?.settings?.scrapeIntervalMinutes || '',
     noResultWhatsAppIntervalMinutes: state?.settings?.noResultWhatsAppIntervalMinutes || '',
@@ -399,7 +402,7 @@ export default function App() {
     phoneNumber: manual.phoneNumber,
     message: manual.message,
   }), 'WhatsApp test message sent.')
-  const sendEmailTest = async () => withSaving(() => api.post('/email/test', { email: emailTest }), 'SMTP test email sent.')
+  const sendEmailTest = async () => withSaving(() => api.post('/email/test', { email: emailTest }), 'Email test sent.')
 
   const submitLogin = async (event) => {
     event.preventDefault()
@@ -435,7 +438,7 @@ export default function App() {
         <StatCard title="Checks 24h" value={checkMetrics.checks24h || 0} icon={<RefreshCw />} />
         <StatCard title="Found 24h" value={checkMetrics.found24h || 0} icon={<Bell />} tone={(checkMetrics.found24h || 0) ? 'ready' : 'default'} />
         <StatCard title="WhatsApp sent" value={`${deliveryMetrics.whatsapp_success || 0}/${whatsappSent}`} icon={<MessageCircle />} tone={(deliveryMetrics.whatsapp_failed || 0) ? 'danger' : 'ready'} />
-        <StatCard title="Email sent" value={`${deliveryMetrics.email_success || 0}/${emailSent}`} icon={<Mail />} tone={(deliveryMetrics.email_failed || 0) ? 'danger' : 'ready'} />
+        <StatCard title="Email sent" value={`${deliveryMetrics.email_success || 0}/${emailSent}`} icon={<Mail />} tone={!state.settings?.emailSendingEnabled ? 'default' : (deliveryMetrics.email_failed || 0) ? 'danger' : 'ready'} />
       </section>
 
       <section className="grid three">
@@ -462,7 +465,8 @@ export default function App() {
             <span><strong>{checkMetrics.newListingCount || 0}</strong> new listings detected</span>
             <span><strong>{state.whatsapp?.ready ? 'Ready' : 'Offline'}</strong> WhatsApp device</span>
             <span><strong>{state.smtp?.configured ? 'Ready' : 'Missing'}</strong> SMTP configuration</span>
-            <span><strong>{state.settings?.operationalAlertsEnabled ? 'Enabled' : 'Paused'}</strong> crash email monitoring</span>
+            <span><strong>{state.settings?.emailSendingEnabled ? 'Enabled' : 'Disabled'}</strong> email sending</span>
+            <span><strong>{state.settings?.emailDeliveryMode === 'immediate' ? 'Immediate' : 'Daily summary'}</strong> email mode</span>
           </div>
         </Card>
         <Card title="Delivery result" icon={<Send size={18} />}>
@@ -473,7 +477,7 @@ export default function App() {
             <span><strong>{deliveryMetrics.email_failed || 0}</strong> Email failed</span>
             <span><strong>{minutesFromMs(state.schedule?.scrapeIntervalMs, 60000)} min</strong> Crous check interval</span>
             <span><strong>{minutesFromMs(state.schedule?.noResultWhatsAppIntervalMs, 1800000)} min</strong> WhatsApp no-result heartbeat</span>
-            <span><strong>{state.settings?.noResultEmailEnabled ? 'All checks' : 'Found/Error only'}</strong> Email schedule rule</span>
+            <span><strong>{state.settings?.emailDailySummaryQueue?.length || 0}</strong> queued email summary item(s)</span>
           </div>
         </Card>
       </section>
@@ -529,12 +533,12 @@ export default function App() {
           </div>
           <div className="checks">
             <label><input type="checkbox" checked={watchForm.notifyWhatsApp} onChange={(event) => setWatchForm({ ...watchForm, notifyWhatsApp: event.target.checked })} /> WhatsApp</label>
-            <label><input type="checkbox" checked={watchForm.notifyEmail} onChange={(event) => setWatchForm({ ...watchForm, notifyEmail: event.target.checked })} /> Email</label>
+            <label><input type="checkbox" checked={watchForm.notifyEmail} onChange={(event) => setWatchForm({ ...watchForm, notifyEmail: event.target.checked })} disabled={!state.settings?.emailSendingEnabled} /> Email</label>
           </div>
           <div className="recipient-preview">
             <strong>Receivers are not edited here</strong>
             <span>WhatsApp: {state.settings?.defaultWhatsAppRecipient || 'No default WhatsApp receivers yet'}</span>
-            <span>Email: {state.settings?.defaultEmail || 'No default email receivers yet'}</span>
+            <span>Email: {state.settings?.emailSendingEnabled ? (state.settings?.defaultEmail || 'No default email receivers yet') : 'Disabled by default'}</span>
           </div>
           <div className="actions">
             <button disabled={saving}><Plus size={16} /> Add Crous search</button>
@@ -603,11 +607,11 @@ export default function App() {
         <button onClick={sendWhatsAppTest} disabled={saving || !state.whatsapp?.ready}><Send size={16} /> Send WhatsApp test</button>
       </Card>
 
-      <Card title="Test email send" icon={<Mail size={18} />}>
-        <StatusBadge ready={state.smtp?.configured} text={state.smtp?.configured ? `SMTP ready · ${state.smtp.from}` : 'SMTP missing'} />
+      <Card title="Email sending" icon={<ShieldAlert size={18} />}>
+        <StatusBadge ready={state.smtp?.configured && state.settings?.emailSendingEnabled} text={state.settings?.emailSendingEnabled ? (state.smtp?.configured ? `Email ready · ${state.smtp.from}` : 'SMTP missing') : 'Email disabled by default'} />
         <label>Email recipient</label>
-        <input value={emailTest} onChange={(event) => setEmailTest(event.target.value)} placeholder="student@example.com" />
-        <button className="ghost" onClick={sendEmailTest} disabled={saving || !state.smtp?.configured}><Mail size={16} /> Send email test</button>
+        <input value={emailTest} onChange={(event) => setEmailTest(event.target.value)} placeholder="student@example.com" disabled={!state.settings?.emailSendingEnabled} />
+        <button className="ghost" onClick={sendEmailTest} disabled={saving || !state.smtp?.configured || !state.settings?.emailSendingEnabled}><Mail size={16} /> Send email test</button>
       </Card>
     </section>
   )
@@ -625,7 +629,7 @@ export default function App() {
           emptyText="No monitoring email events to graph yet."
         />
         <div className="graph-caption">
-          Monitoring tracks critical-alert email behavior: sent alerts, failed SMTP attempts, and skipped alerts when throttled or missing recipients.
+          Monitoring tracks critical-alert email behavior when email sending and operational alerts are enabled.
         </div>
       </Card>
 
@@ -719,7 +723,7 @@ export default function App() {
       onToggleSidebar={() => setSidebarOpen((open) => !open)}
       activeView={activeView}
       onViewChange={setActiveView}
-      topbar={<Topbar whatsappReady={state.whatsapp?.ready} smtpReady={state.smtp?.configured} theme={theme} onToggleTheme={toggleTheme} onRefresh={refresh} onLogout={handleLogout} />}
+      topbar={<Topbar whatsappReady={state.whatsapp?.ready} smtpReady={state.smtp?.configured} emailEnabled={state.settings?.emailSendingEnabled} theme={theme} onToggleTheme={toggleTheme} onRefresh={refresh} onLogout={handleLogout} />}
     >
       {message && <div className={`alert ${message.type}`}>{message.text}</div>}
       {viewContent[activeView] || viewContent.dashboard}

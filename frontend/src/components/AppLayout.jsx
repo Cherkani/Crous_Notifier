@@ -74,7 +74,7 @@ function Sidebar({ open, activeView, onViewChange, onToggle }) {
   )
 }
 
-export function Topbar({ whatsappReady, smtpReady, theme, onToggleTheme, onRefresh, onLogout }) {
+export function Topbar({ whatsappReady, smtpReady, emailEnabled, theme, onToggleTheme, onRefresh, onLogout }) {
   return (
     <header className="topbar">
       <div className="topbar-glow" aria-hidden="true" />
@@ -121,9 +121,9 @@ export function Topbar({ whatsappReady, smtpReady, theme, onToggleTheme, onRefre
             <i />
             WhatsApp
           </span>
-          <span className={`system-pill ${smtpReady ? 'ready' : 'pending'}`}>
+          <span className={`system-pill ${smtpReady && emailEnabled ? 'ready' : 'pending'}`}>
             <i />
-            SMTP
+            Email
           </span>
         </div>
         <button className="theme-toggle" type="button" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
@@ -160,7 +160,7 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
         <div>
           <p className="eyebrow">Configuration</p>
           <h2>Senders and receivers</h2>
-          <p className="panel-copy">Edit only notification numbers and emails here. The Crous search stays configured in the Crous search sidebar.</p>
+          <p className="panel-copy">Edit notification channels and receivers here. The Crous search stays configured in the Crous search sidebar.</p>
         </div>
       </div>
 
@@ -186,7 +186,7 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
               <div>
                 <label>Email sender</label>
                 <strong>{state?.smtp?.from || 'SMTP sender missing'}</strong>
-                <small>Email always sends from the configured SMTP account.</small>
+                <small>Email is disabled by default and only sends when enabled.</small>
               </div>
             </div>
           </div>
@@ -195,8 +195,40 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
             <label className="toggle-row">
               <input
                 type="checkbox"
+                checked={Boolean(settingsDraft.emailSendingEnabled)}
+                onChange={(event) => setSettingsDraft({ ...settingsDraft, emailSendingEnabled: event.target.checked })}
+              />
+              <span>Enable email sending</span>
+            </label>
+            <label>Email delivery mode</label>
+            <select
+              value={settingsDraft.emailDeliveryMode || 'daily_summary'}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, emailDeliveryMode: event.target.value })}
+              disabled={!settingsDraft.emailSendingEnabled}
+            >
+              <option value="daily_summary">One structured end-of-day summary</option>
+              <option value="immediate">Send each email alert immediately</option>
+            </select>
+            <label>Summary send hour</label>
+            <input
+              type="number"
+              min="0"
+              max="23"
+              step="1"
+              value={settingsDraft.emailDailySummaryHour ?? 23}
+              onChange={(event) => setSettingsDraft({ ...settingsDraft, emailDailySummaryHour: event.target.value })}
+              disabled={!settingsDraft.emailSendingEnabled || settingsDraft.emailDeliveryMode !== 'daily_summary'}
+            />
+            <small className="config-help">Summary mode collects new listings and watch issues during the day, then sends one email after this hour.</small>
+          </div>
+
+          <div className="config-section">
+            <label className="toggle-row">
+              <input
+                type="checkbox"
                 checked={Boolean(settingsDraft.operationalAlertsEnabled)}
                 onChange={(event) => setSettingsDraft({ ...settingsDraft, operationalAlertsEnabled: event.target.checked })}
+                disabled={!settingsDraft.emailSendingEnabled}
               />
               <span>Email me on crashes and critical errors</span>
             </label>
@@ -205,6 +237,7 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
               value={settingsDraft.operationalAlertEmail || ''}
               onChange={(event) => setSettingsDraft({ ...settingsDraft, operationalAlertEmail: event.target.value })}
               placeholder="admin@example.com, ops@example.com"
+              disabled={!settingsDraft.emailSendingEnabled}
             />
           </div>
 
@@ -215,6 +248,7 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
               value={settingsDraft.defaultEmail || ''}
               onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultEmail: event.target.value })}
               placeholder={'student@example.com\nparent@example.com'}
+              disabled={!settingsDraft.emailSendingEnabled}
             />
             <label>Default WhatsApp receiver number(s)</label>
             <textarea
@@ -223,7 +257,7 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
               onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultWhatsAppRecipient: event.target.value })}
               placeholder={'+212600000000\n+212688505361'}
             />
-            <small className="config-help">Add multiple receivers with commas or one per line. The sender stays the connected WhatsApp device / SMTP account.</small>
+            <small className="config-help">Add multiple receivers with commas or one per line. Email recipients are ignored while email sending is disabled.</small>
           </div>
         </>
       )}
@@ -262,24 +296,22 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
               </small>
             </div>
             <div>
-              <label>Email sending rule</label>
+              <label>Email no-result updates</label>
               <select
                 value={settingsDraft.noResultEmailEnabled ? 'all' : 'important'}
                 onChange={(event) => setSettingsDraft({ ...settingsDraft, noResultEmailEnabled: event.target.value === 'all' })}
+                disabled={!settingsDraft.emailSendingEnabled || settingsDraft.emailDeliveryMode === 'daily_summary'}
               >
                 <option value="important">Found housing + issue/error only</option>
                 <option value="all">Also send no-result updates</option>
               </select>
-              <small>
-                {settingsDraft.noResultEmailEnabled
-                  ? 'Email will also send normal no-result updates.'
-                  : 'Email sends found housing alerts plus required monitoring logs for crashes, scrape issues, and critical errors. It will not send normal no-result checks.'}
-              </small>
+              <small>Available only in immediate email mode. Daily summary mode avoids repeated no-result emails.</small>
             </div>
           </div>
           <p className="config-help">
             Saved timing values apply immediately and are kept in the database. Current effective plan: check Crous every {effectiveCheckMinutes} minute(s);
-            WhatsApp no-result heartbeat every {effectiveNoResultMinutes} minute(s); email for found housing and monitoring issues.
+            WhatsApp no-result heartbeat every {effectiveNoResultMinutes} minute(s);
+            email {settingsDraft.emailSendingEnabled ? (settingsDraft.emailDeliveryMode === 'daily_summary' ? `summary after ${settingsDraft.emailDailySummaryHour || 23}:00` : 'immediate alerts') : 'disabled'}.
           </p>
         </div>
       )}
@@ -305,8 +337,8 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
 
       <div className="config-health">
         <strong>Capture status</strong>
-        <span>{state?.smtp?.configured ? 'SMTP ready' : 'SMTP missing'}</span>
-        <span>{state?.settings?.operationalAlertsEnabled ? 'Operational alerts enabled' : 'Operational alerts paused'}</span>
+        <span>{state?.whatsapp?.ready ? 'WhatsApp ready' : 'WhatsApp disconnected'}</span>
+        <span>{state?.settings?.emailSendingEnabled ? 'Email enabled' : 'Email disabled by default'}</span>
       </div>
     </aside>
   )

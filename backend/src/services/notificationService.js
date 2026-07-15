@@ -1,5 +1,5 @@
 const config = require('../config')
-const { addLog, getState, recordDeliveryEvent } = require('../store/mysqlStore')
+const { addLog, getState, recordDeliveryEvent, updateState } = require('../store/mysqlStore')
 const { sendMail } = require('./mailService')
 const whatsapp = require('./whatsappService')
 const { renderTemplate, splitValues } = require('../utils/format')
@@ -17,8 +17,20 @@ function whatsappRecipients(watch, settings = {}) {
   return splitValues(settings.defaultWhatsAppRecipient || watch.whatsappRecipient)
 }
 
-function emailRecipients(watch, settings = {}) {
+function emailRecipients(watch = {}, settings = {}) {
   return splitValues(settings.defaultEmail || watch.emailRecipient)
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.filter(Boolean))]
+}
+
+function emailEnabled(settings = {}) {
+  return Boolean(settings.emailSendingEnabled)
+}
+
+function usesDailySummary(settings = {}) {
+  return (settings.emailDeliveryMode || 'daily_summary') === 'daily_summary'
 }
 
 async function sendWhatsAppToRecipients({ watch, recipients, text, triggerType, metadata = null, successLog, failureLog }) {
@@ -58,7 +70,7 @@ async function sendWhatsAppToRecipients({ watch, recipients, text, triggerType, 
   return deliveries
 }
 
-async function sendEmailToRecipients({ watch, recipients, subject, text, triggerType, metadata = null, successLog, failureLog }) {
+async function sendEmailToRecipients({ watch = {}, recipients, subject, text, triggerType, metadata = null, successLog, failureLog }) {
   const deliveries = []
   for (const recipient of recipients) {
     try {
@@ -97,6 +109,113 @@ async function sendEmailToRecipients({ watch, recipients, subject, text, trigger
   return deliveries
 }
 
+async function queueDailyEmailSummaryItem({ type, watch, listings = [], error = null }) {
+  await updateState((draft) => {
+    const queue = Array.isArray(draft.settings.emailDailySummaryQueue) ? draft.settings.emailDailySummaryQueue : []
+    queue.push({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      type,
+      watchId: watch?.id || null,
+      watchName: watch?.name || 'Crous search',
+      url: watch?.url || '',
+      listings: listings.map((item) => ({
+        title: item.title || '',
+        price: item.price || '',
+        overview: item.overview || '',
+        url: item.url || '',
+      })),
+      error: error ? error.message || String(error) : '',
+      createdAt: new Date().toISOString(),
+    })
+    draft.settings.emailDailySummaryQueue = queue.slice(-200)
+  })
+}
+
+function todayKey(date = new Date()) {
+  return date.toISOString().slice(0, 10)
+}
+
+function shouldSendDailySummary(settings = {}, date = new Date()) {
+  if (!emailEnabled(settings) || !usesDailySummary(settings)) return false
+  const hour = Math.max(0, Math.min(23, Number(settings.emailDailySummaryHour || 23)))
+  return date.getHours() >= hour && settings.emailDailySummaryLastSentDate !== todayKey(date)
+}
+
+function renderDailySummary({ state, queue, date = new Date() }) {
+  const startOfDay = new Date(date)
+  startOfDay.setHours(0, 0, 0, 0)
+  const todayChecks = (state.checkEvents || []).filter((event) => new Date(event.createdAt) >= startOfDay)
+  const foundChecks = todayChecks.filter((event) => Number(event.foundCount || 0) > 0)
+  const errorChecks = todayChecks.filter((event) => event.status === 'error')
+  const listingItems = queue.flatMap((item) => item.listings.map((listing) => ({ ...listing, watchName: item.watchName, watchUrl: item.url })))
+  const issueItems = queue.filter((item) => item.type === 'watch_issue')
+
+  const listingLines = listingItems.length
+    ? listingItems.map((listing, index) => [
+      `${index + 1}. ${listing.title || 'Logement Crous'}`,
+      listing.price ? `   Prix: ${listing.price}` : null,
+      listing.overview ? `   ${listing.overview}` : null,
+      `   Recherche: ${listing.watchName}`,
+      listing.url ? `   ${listing.url}` : listing.watchUrl ? `   ${listing.watchUrl}` : null,
+    ].filter(Boolean).join('\n')).join('\n\n')
+    : 'Aucun nouveau logement mis en file pour le resume email aujourd hui.'
+
+  const issueLines = issueItems.length
+    ? issueItems.map((item) => `- ${item.watchName}: ${item.error || 'Erreur inconnue'}`).join('\n')
+    : 'Aucune erreur de surveillance mise en file.'
+
+  return [
+    `Resume Crous du ${date.toLocaleDateString('fr-FR')}`,
+    '',
+    'Vue globale',
+    `- Checks aujourd hui: ${todayChecks.length}`,
+    `- Checks avec logements: ${foundChecks.length}`,
+    `- Erreurs: ${errorChecks.length}`,
+    `- Nouveaux logements dans ce resume: ${listingItems.length}`,
+    '',
+    'Nouveaux logements',
+    listingLines,
+    '',
+    'Problemes detectes',
+    issueLines,
+    '',
+    'Ce resume est envoye une seule fois en fin de journee quand le mode resume quotidien est active.',
+  ].join('\n')
+}
+
+async function sendDailyEmailSummaryIfDue() {
+  const state = await getState()
+  const settings = state.settings || {}
+  if (!shouldSendDailySummary(settings)) return { skipped: true }
+
+  const recipients = uniqueValues([
+    ...emailRecipients({}, settings),
+    ...(state.watches || []).flatMap((watch) => splitValues(watch.emailRecipient)),
+  ])
+  if (!recipients.length) return { skipped: true, reason: 'missing recipients' }
+
+  const queue = Array.isArray(settings.emailDailySummaryQueue) ? settings.emailDailySummaryQueue : []
+  const subject = `Crous: resume quotidien ${new Date().toLocaleDateString('fr-FR')}`
+  const text = renderDailySummary({ state, queue })
+  const deliveries = await sendEmailToRecipients({
+    recipients,
+    subject,
+    text,
+    triggerType: 'daily_summary',
+    metadata: { queuedItems: queue.length },
+    successLog: 'Daily email summary sent',
+    failureLog: 'Daily email summary failed',
+  })
+
+  if (deliveries.some((delivery) => delivery.ok)) {
+    await updateState((draft) => {
+      draft.settings.emailDailySummaryLastSentDate = todayKey()
+      draft.settings.emailDailySummaryQueue = []
+    })
+  }
+  return { ok: deliveries.some((delivery) => delivery.ok), deliveries }
+}
+
 async function notifyNewListings(watch, listings) {
   const state = await getState()
   const items = listings.map((item) => [
@@ -128,18 +247,22 @@ async function notifyNewListings(watch, listings) {
   }
 
   const mailRecipients = emailRecipients(watch, state.settings)
-  if (watch.notifyEmail && mailRecipients.length) {
-    const subject = `Crous: ${listings.length} nouveau(x) logement(s)`
-    deliveries.push(...await sendEmailToRecipients({
-      watch,
-      recipients: mailRecipients,
-      subject,
-      text,
-      triggerType: 'new_listing',
-      metadata: { listingCount: listings.length },
-      successLog: `Email alert sent for ${watch.name}`,
-      failureLog: `Email alert failed for ${watch.name}`,
-    }))
+  if (emailEnabled(state.settings) && watch.notifyEmail && mailRecipients.length) {
+    if (usesDailySummary(state.settings)) {
+      await queueDailyEmailSummaryItem({ type: 'new_listing', watch, listings })
+    } else {
+      const subject = `Crous: ${listings.length} nouveau(x) logement(s)`
+      deliveries.push(...await sendEmailToRecipients({
+        watch,
+        recipients: mailRecipients,
+        subject,
+        text,
+        triggerType: 'new_listing',
+        metadata: { listingCount: listings.length },
+        successLog: `Email alert sent for ${watch.name}`,
+        failureLog: `Email alert failed for ${watch.name}`,
+      }))
+    }
   }
 
   return { text, deliveries }
@@ -174,7 +297,7 @@ async function notifyNoListingsWhatsApp(watch) {
 async function notifyNoListingsEmail(watch) {
   const state = await getState()
   const recipients = emailRecipients(watch, state.settings)
-  if (!watch.notifyEmail || !recipients.length) return { skipped: true }
+  if (!emailEnabled(state.settings) || !watch.notifyEmail || !recipients.length || usesDailySummary(state.settings)) return { skipped: true }
 
   const subject = `Crous check: no housing for ${watch.name}`
   const text = [
@@ -198,7 +321,12 @@ async function notifyNoListingsEmail(watch) {
 async function notifyWatchIssueEmail(watch, error) {
   const state = await getState()
   const recipients = emailRecipients(watch, state.settings)
-  if (!watch.notifyEmail || !recipients.length) return { skipped: true }
+  if (!emailEnabled(state.settings) || !watch.notifyEmail || !recipients.length) return { skipped: true }
+
+  if (usesDailySummary(state.settings)) {
+    await queueDailyEmailSummaryItem({ type: 'watch_issue', watch, error })
+    return { queued: true }
+  }
 
   const subject = `Crous automation issue: ${watch.name}`
   const text = [
@@ -290,5 +418,6 @@ module.exports = {
   notifyNoListingsWhatsApp,
   notifyNewListings,
   notifyWatchIssueEmail,
+  sendDailyEmailSummaryIfDue,
   sendManualNotification,
 }

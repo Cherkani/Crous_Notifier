@@ -38,6 +38,12 @@ function scheduleFromSettings(settings = {}) {
   }
 }
 
+function assertEmailSendingEnabled(settings = {}) {
+  if (!settings.emailSendingEnabled) {
+    throw new Error('Email sending is disabled in Configuration')
+  }
+}
+
 router.get('/state', async (req, res, next) => {
   try {
     const state = await getState()
@@ -75,8 +81,20 @@ router.patch('/settings', async (req, res, next) => {
       if (nextSettings.noResultWhatsAppIntervalMinutes !== undefined) {
         nextSettings.noResultWhatsAppIntervalMinutes = nextSettings.noResultWhatsAppIntervalMinutes === '' ? '' : Math.max(1, Number(nextSettings.noResultWhatsAppIntervalMinutes || 1))
       }
+      if (nextSettings.emailSendingEnabled !== undefined) {
+        nextSettings.emailSendingEnabled = Boolean(nextSettings.emailSendingEnabled)
+      }
+      if (nextSettings.operationalAlertsEnabled !== undefined) {
+        nextSettings.operationalAlertsEnabled = Boolean(nextSettings.operationalAlertsEnabled)
+      }
       if (nextSettings.noResultEmailEnabled !== undefined) {
         nextSettings.noResultEmailEnabled = Boolean(nextSettings.noResultEmailEnabled)
+      }
+      if (nextSettings.emailDeliveryMode !== undefined && !['daily_summary', 'immediate'].includes(nextSettings.emailDeliveryMode)) {
+        nextSettings.emailDeliveryMode = 'daily_summary'
+      }
+      if (nextSettings.emailDailySummaryHour !== undefined) {
+        nextSettings.emailDailySummaryHour = Math.max(0, Math.min(23, Number(nextSettings.emailDailySummaryHour || 23)))
       }
       draft.settings = { ...draft.settings, ...nextSettings }
       return draft.settings
@@ -208,6 +226,10 @@ router.post('/notifications/manual', async (req, res, next) => {
   try {
     if (!req.body?.message?.trim()) throw new Error('Message is required')
     if (!req.body.phoneNumber && !req.body.email) throw new Error('Choose WhatsApp, email, or both')
+    if (req.body.email) {
+      const state = await getState()
+      assertEmailSendingEnabled(state.settings)
+    }
     res.json(await sendManualNotification({
       phoneNumber: req.body.phoneNumber,
       email: req.body.email,
@@ -221,11 +243,13 @@ router.post('/notifications/manual', async (req, res, next) => {
 router.post('/email/test', async (req, res, next) => {
   try {
     if (!req.body?.email) throw new Error('Email is required')
+    const state = await getState()
+    assertEmailSendingEnabled(state.settings)
     const subject = 'Crous automation SMTP test'
     const result = await sendMail({
       to: req.body.email,
       subject,
-      text: 'SMTP is configured and working.',
+      text: 'SMTP is configured and email sending is enabled.',
     })
     await recordDeliveryEvent({
       channel: 'email',
@@ -233,7 +257,7 @@ router.post('/email/test', async (req, res, next) => {
       status: 'success',
       recipient: req.body.email,
       subject,
-      message: 'SMTP is configured and working.',
+      message: 'SMTP is configured and email sending is enabled.',
       providerMessageId: result?.id,
     })
     await addLog({ type: 'email', message: 'SMTP test email sent', details: result })
@@ -246,7 +270,7 @@ router.post('/email/test', async (req, res, next) => {
         status: 'failed',
         recipient: req.body.email,
         subject: 'Crous automation SMTP test',
-        message: 'SMTP is configured and working.',
+        message: 'SMTP is configured and email sending is enabled.',
         errorMessage: error.message,
       }).catch(() => undefined)
     }

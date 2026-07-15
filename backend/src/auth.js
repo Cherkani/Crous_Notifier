@@ -27,7 +27,7 @@ function getAuthConfig() {
   return {
     username: process.env.APP_LOGIN_USER || 'salma',
     password: process.env.APP_LOGIN_PASSWORD || 'i love u baby',
-    secret: process.env.APP_SESSION_SECRET || process.env.SMTP_PASS || 'crous-local-session-secret',
+    secret: process.env.APP_SESSION_SECRET || 'crous-local-session-secret',
   }
 }
 

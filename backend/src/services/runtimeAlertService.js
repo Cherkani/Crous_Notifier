@@ -71,7 +71,8 @@ async function getAlertConfig() {
     settings = state.settings || {}
   } catch {
     settings = {
-      operationalAlertsEnabled: process.env.OPERATIONAL_ALERTS_ENABLED || 'true',
+      emailSendingEnabled: process.env.EMAIL_SENDING_ENABLED || 'false',
+      operationalAlertsEnabled: process.env.OPERATIONAL_ALERTS_ENABLED || 'false',
       operationalAlertEmail: process.env.OPERATIONAL_ALERT_EMAIL || process.env.ALERT_EMAIL_TO || '',
     }
   }
@@ -84,7 +85,7 @@ async function getAlertConfig() {
   )
 
   return {
-    enabled: truthy(settings.operationalAlertsEnabled),
+    enabled: truthy(settings.emailSendingEnabled) && truthy(settings.operationalAlertsEnabled),
     recipients,
   }
 }
@@ -116,9 +117,10 @@ async function notifyRuntimeError({ source, error, metadata = null }) {
       eventType: 'runtime_error',
       status: 'skipped',
       subject,
-      errorMessage: 'Operational alerts disabled, missing recipient, or throttled',
+      errorMessage: 'Email sending disabled, operational alerts disabled, missing recipient, or throttled',
       metadata: { source, originalError: normalizedError.message, ...(metadata || {}) },
     }).catch(() => undefined)
+    await addLog({ level: 'error', type: 'monitoring', message: `Runtime issue detected: ${source || 'runtime'}`, details: normalizedError }).catch(() => undefined)
     return false
   }
 

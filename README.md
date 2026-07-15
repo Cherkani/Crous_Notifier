@@ -1,6 +1,6 @@
 # Crous Automation
 
-React + Node automation for watching Crous housing search URLs and sending alerts by WhatsApp and email.
+React + Node automation for watching Crous housing search URLs and sending alerts by WhatsApp, with optional email sending disabled by default.
 
 The old Discord bot logic has been kept as the source behavior:
 
@@ -24,7 +24,7 @@ Local URLs:
 
 ## Environment
 
-Use one root `.env` file. Copy `.env.example` and fill the SMTP values.
+Use one root `.env` file. Copy `.env.example` and fill the required values. SMTP values are only used when email sending is enabled from the UI.
 
 ```bash
 cp .env.example .env
@@ -54,18 +54,12 @@ If you already have an old `data/state.json`, import it once after migrations:
 npm run db:import-json
 ```
 
-Operational crash/error emails can be configured from the right-side Configuration panel in the UI. As a fallback for database startup failures, you can also set:
-
-```bash
-OPERATIONAL_ALERT_EMAIL=admin@example.com
-OPERATIONAL_ALERTS_ENABLED=true
-```
-
 ## Features
 
 - Crous watch management from the UI
 - WhatsApp device connection by phone number + QR code
-- SMTP email notifications
+- Optional SMTP email notifications, disabled by default
+- One structured end-of-day email summary mode
 - Manual WhatsApp/email message composer
 - Live logs
 - Deploy helper script for `automation.al-shifae.ma`

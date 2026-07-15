@@ -1,6 +1,12 @@
 const config = require('../config')
 const { scrapeCrous } = require('./crousScraper')
-const { notifyNewListings, notifyNoListingsEmail, notifyNoListingsWhatsApp, notifyWatchIssueEmail } = require('./notificationService')
+const {
+  notifyNewListings,
+  notifyNoListingsEmail,
+  notifyNoListingsWhatsApp,
+  notifyWatchIssueEmail,
+  sendDailyEmailSummaryIfDue,
+} = require('./notificationService')
 const { addLog, getState, recordCheckEvent, updateState } = require('../store/mysqlStore')
 const { notifyRuntimeError } = require('./runtimeAlertService')
 const { splitValues } = require('../utils/format')
@@ -80,6 +86,7 @@ class WatchScheduler {
       for (const watch of watches) {
         await this.checkWatch(watch)
       }
+      await sendDailyEmailSummaryIfDue()
       this.emitState()
     } finally {
       this.running = false
