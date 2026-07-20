@@ -1,8 +1,8 @@
 const fs = require('fs/promises')
 const path = require('path')
 const config = require('../config')
-const { sendMail } = require('./mailService')
 const { addLog, getState, recordAlertEmailEvent } = require('../store/mysqlStore')
+const { queueDailyEmailSummaryItem } = require('./notificationService')
 
 const recentAlerts = new Map()
 const ALERT_THROTTLE_MS = Number(process.env.ALERT_THROTTLE_MS || 15 * 60 * 1000)
@@ -124,47 +124,27 @@ async function notifyRuntimeError({ source, error, metadata = null }) {
     return false
   }
 
-  const text = [
-    'Crous Automation detected a runtime issue.',
-    '',
-    `Source: ${source || 'runtime'}`,
-    `Public URL: ${config.publicBaseUrl || '-'}`,
-    `Node env: ${process.env.NODE_ENV || '-'}`,
-    `Code: ${normalizedError.code || '-'}`,
-    '',
-    'Message:',
-    normalizedError.message || '-',
-    '',
-    'Metadata:',
-    metadata ? JSON.stringify(metadata, null, 2) : '-',
-    '',
-    'Stack:',
-    normalizedError.stack || '-',
-  ].join('\n')
+  await queueDailyEmailSummaryItem({
+    type: 'runtime_issue',
+    error: normalizedError.message,
+    metadata: {
+      source: source || 'runtime',
+      code: normalizedError.code || normalizedError.name,
+      publicBaseUrl: config.publicBaseUrl || '',
+      nodeEnv: process.env.NODE_ENV || '',
+      originalMetadata: metadata || null,
+    },
+  }).catch(() => undefined)
 
-  try {
-    await sendMail({ to: alertConfig.recipients, subject, text })
-    await recordAlertEmailEvent({
-      eventType: 'runtime_error',
-      status: 'sent',
-      recipients: alertConfig.recipients,
-      subject,
-      metadata: { source, originalError: normalizedError.message, ...(metadata || {}) },
-    })
-    await addLog({ type: 'monitoring', message: `Operational alert sent: ${source}`, details: { recipients: alertConfig.recipients } })
-    return true
-  } catch (sendError) {
-    await recordAlertEmailEvent({
-      eventType: 'runtime_error',
-      status: 'failed',
-      recipients: alertConfig.recipients,
-      subject,
-      errorMessage: sendError.message,
-      metadata: { source, originalError: normalizedError.message, ...(metadata || {}) },
-    }).catch(() => undefined)
-    await addLog({ level: 'error', type: 'monitoring', message: 'Operational alert email failed', details: sendError.message }).catch(() => undefined)
-    return false
-  }
+  await recordAlertEmailEvent({
+    eventType: 'runtime_error',
+    status: 'queued',
+    recipients: alertConfig.recipients,
+    subject,
+    metadata: { source, originalError: normalizedError.message, ...(metadata || {}) },
+  }).catch(() => undefined)
+  await addLog({ level: 'error', type: 'monitoring', message: `Operational alert queued for daily email summary: ${source || 'runtime'}`, details: normalizedError }).catch(() => undefined)
+  return true
 }
 
 module.exports = {

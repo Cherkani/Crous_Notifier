@@ -2,7 +2,6 @@ const config = require('../config')
 const { scrapeCrous } = require('./crousScraper')
 const {
   notifyNewListings,
-  notifyNoListingsEmail,
   notifyNoListingsWhatsApp,
   notifyWatchIssueEmail,
   sendDailyEmailSummaryIfDue,
@@ -130,10 +129,6 @@ class WatchScheduler {
             const target = draft.watches.find((item) => item.id === watch.id)
             if (target) target.lastNoResultWhatsAppAt = new Date().toISOString()
           })
-        }
-        const state = await getState()
-        if (state.settings?.noResultEmailEnabled) {
-          await notifyNoListingsEmail(watch)
         }
         return
       }

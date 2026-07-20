@@ -41,13 +41,13 @@ function settingsFromState(state) {
     defaultEmail: state?.settings?.defaultEmail || '',
     defaultWhatsAppRecipient: state?.settings?.defaultWhatsAppRecipient || '',
     emailSendingEnabled: Boolean(state?.settings?.emailSendingEnabled),
-    emailDeliveryMode: state?.settings?.emailDeliveryMode || 'daily_summary',
+    emailDeliveryMode: 'daily_summary',
     emailDailySummaryHour: state?.settings?.emailDailySummaryHour ?? 23,
     operationalAlertsEnabled: Boolean(state?.settings?.operationalAlertsEnabled),
     operationalAlertEmail: state?.settings?.operationalAlertEmail || '',
     scrapeIntervalMinutes: state?.settings?.scrapeIntervalMinutes || '',
     noResultWhatsAppIntervalMinutes: state?.settings?.noResultWhatsAppIntervalMinutes || '',
-    noResultEmailEnabled: Boolean(state?.settings?.noResultEmailEnabled),
+    noResultEmailEnabled: false,
     notificationTemplate: state?.settings?.notificationTemplate || '',
   }
 }
@@ -466,7 +466,7 @@ export default function App() {
             <span><strong>{state.whatsapp?.ready ? 'Ready' : 'Offline'}</strong> WhatsApp device</span>
             <span><strong>{state.smtp?.configured ? 'Ready' : 'Missing'}</strong> SMTP configuration</span>
             <span><strong>{state.settings?.emailSendingEnabled ? 'Enabled' : 'Disabled'}</strong> email sending</span>
-            <span><strong>{state.settings?.emailDeliveryMode === 'immediate' ? 'Immediate' : 'Daily summary'}</strong> email mode</span>
+            <span><strong>Daily summary</strong> email mode</span>
           </div>
         </Card>
         <Card title="Delivery result" icon={<Send size={18} />}>

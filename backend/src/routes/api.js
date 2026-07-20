@@ -33,8 +33,8 @@ function scheduleFromSettings(settings = {}) {
   return {
     scrapeIntervalMs: scrapeIntervalMinutes > 0 ? scrapeIntervalMinutes * 60 * 1000 : config.scrapeIntervalMs,
     noResultWhatsAppIntervalMs: noResultWhatsAppIntervalMinutes > 0 ? noResultWhatsAppIntervalMinutes * 60 * 1000 : config.noResultWhatsAppIntervalMs,
-    noResultEmailEnabled: Boolean(settings.noResultEmailEnabled),
-    source: scrapeIntervalMinutes > 0 || noResultWhatsAppIntervalMinutes > 0 || settings.noResultEmailEnabled ? 'configuration' : 'backend env',
+    noResultEmailEnabled: false,
+    source: scrapeIntervalMinutes > 0 || noResultWhatsAppIntervalMinutes > 0 ? 'configuration' : 'backend env',
   }
 }
 
@@ -90,9 +90,8 @@ router.patch('/settings', async (req, res, next) => {
       if (nextSettings.noResultEmailEnabled !== undefined) {
         nextSettings.noResultEmailEnabled = Boolean(nextSettings.noResultEmailEnabled)
       }
-      if (nextSettings.emailDeliveryMode !== undefined && !['daily_summary', 'immediate'].includes(nextSettings.emailDeliveryMode)) {
-        nextSettings.emailDeliveryMode = 'daily_summary'
-      }
+      nextSettings.emailDeliveryMode = 'daily_summary'
+      nextSettings.noResultEmailEnabled = false
       if (nextSettings.emailDailySummaryHour !== undefined) {
         nextSettings.emailDailySummaryHour = Math.max(0, Math.min(23, Number(nextSettings.emailDailySummaryHour || 23)))
       }

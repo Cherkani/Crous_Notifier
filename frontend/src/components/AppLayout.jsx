@@ -200,15 +200,8 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
               />
               <span>Enable email sending</span>
             </label>
-            <label>Email delivery mode</label>
-            <select
-              value={settingsDraft.emailDeliveryMode || 'daily_summary'}
-              onChange={(event) => setSettingsDraft({ ...settingsDraft, emailDeliveryMode: event.target.value })}
-              disabled={!settingsDraft.emailSendingEnabled}
-            >
-              <option value="daily_summary">One structured end-of-day summary</option>
-              <option value="immediate">Send each email alert immediately</option>
-            </select>
+            <label>Email delivery</label>
+            <input value="One structured end-of-day summary" disabled />
             <label>Summary send hour</label>
             <input
               type="number"
@@ -217,9 +210,9 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
               step="1"
               value={settingsDraft.emailDailySummaryHour ?? 23}
               onChange={(event) => setSettingsDraft({ ...settingsDraft, emailDailySummaryHour: event.target.value })}
-              disabled={!settingsDraft.emailSendingEnabled || settingsDraft.emailDeliveryMode !== 'daily_summary'}
+              disabled={!settingsDraft.emailSendingEnabled}
             />
-            <small className="config-help">Summary mode collects new listings and watch issues during the day, then sends one email after this hour.</small>
+            <small className="config-help">Email collects new listings, watch issues, and operational alerts during the day, then sends one detailed report after this hour.</small>
           </div>
 
           <div className="config-section">
@@ -297,21 +290,14 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
             </div>
             <div>
               <label>Email no-result updates</label>
-              <select
-                value={settingsDraft.noResultEmailEnabled ? 'all' : 'important'}
-                onChange={(event) => setSettingsDraft({ ...settingsDraft, noResultEmailEnabled: event.target.value === 'all' })}
-                disabled={!settingsDraft.emailSendingEnabled || settingsDraft.emailDeliveryMode === 'daily_summary'}
-              >
-                <option value="important">Found housing + issue/error only</option>
-                <option value="all">Also send no-result updates</option>
-              </select>
-              <small>Available only in immediate email mode. Daily summary mode avoids repeated no-result emails.</small>
+              <input value="Off: included only in the daily report" disabled />
+              <small>Email does not send repeated no-result messages during the day.</small>
             </div>
           </div>
           <p className="config-help">
             Saved timing values apply immediately and are kept in the database. Current effective plan: check Crous every {effectiveCheckMinutes} minute(s);
             WhatsApp no-result heartbeat every {effectiveNoResultMinutes} minute(s);
-            email {settingsDraft.emailSendingEnabled ? (settingsDraft.emailDeliveryMode === 'daily_summary' ? `summary after ${settingsDraft.emailDailySummaryHour || 23}:00` : 'immediate alerts') : 'disabled'}.
+            email {settingsDraft.emailSendingEnabled ? `summary after ${settingsDraft.emailDailySummaryHour || 23}:00` : 'disabled'}.
           </p>
         </div>
       )}
