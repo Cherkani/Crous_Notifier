@@ -1,8 +1,7 @@
 const fs = require('fs/promises')
 const path = require('path')
 const config = require('../config')
-const { addLog, getState, recordAlertEmailEvent } = require('../store/mysqlStore')
-const { queueDailyEmailSummaryItem } = require('./notificationService')
+const { addLog, getState, recordAlertEmailEvent, updateState } = require('../store/mysqlStore')
 
 const recentAlerts = new Map()
 const ALERT_THROTTLE_MS = Number(process.env.ALERT_THROTTLE_MS || 15 * 60 * 1000)
@@ -100,6 +99,24 @@ function formatError(error) {
   }
 }
 
+async function queueRuntimeIssue({ source, error, metadata = null }) {
+  await updateState((draft) => {
+    const queue = Array.isArray(draft.settings.emailDailySummaryQueue) ? draft.settings.emailDailySummaryQueue : []
+    queue.push({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      type: 'runtime_issue',
+      watchId: null,
+      watchName: source || 'runtime',
+      url: '',
+      listings: [],
+      error: error.message || String(error),
+      metadata,
+      createdAt: new Date().toISOString(),
+    })
+    draft.settings.emailDailySummaryQueue = queue.slice(-200)
+  })
+}
+
 async function notifyRuntimeError({ source, error, metadata = null }) {
   const normalizedError = formatError(error)
   const subject = `[Crous Automation] ${source || 'runtime'}: ${normalizedError.code || normalizedError.name}`
@@ -124,8 +141,8 @@ async function notifyRuntimeError({ source, error, metadata = null }) {
     return false
   }
 
-  await queueDailyEmailSummaryItem({
-    type: 'runtime_issue',
+  await queueRuntimeIssue({
+    source: source || 'runtime',
     error: normalizedError.message,
     metadata: {
       source: source || 'runtime',

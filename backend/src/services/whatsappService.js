@@ -1,11 +1,11 @@
-const makeWASocket = require('@itsukichan/baileys').default
+const makeWASocket = require('@whiskeysockets/baileys').default
 const {
   BufferJSON,
   DisconnectReason,
   fetchLatestBaileysVersion,
   initAuthCreds,
   proto,
-} = require('@itsukichan/baileys')
+} = require('@whiskeysockets/baileys')
 const QRCode = require('qrcode')
 const pino = require('pino')
 const { getState, updateState, addLog } = require('../store/mysqlStore')
@@ -94,7 +94,7 @@ class WhatsAppService {
     const digits = cleanPhone(to)
     if (!isValidPhone(digits)) throw new Error('A valid recipient phone number is required')
     const result = await this.socket.sendMessage(`${digits}@s.whatsapp.net`, { text })
-    return { provider: '@itsukichan/baileys', id: result?.key?.id || null }
+    return { provider: '@whiskeysockets/baileys', id: result?.key?.id || null }
   }
 
   async startSocket(expectedPhoneNumber) {
