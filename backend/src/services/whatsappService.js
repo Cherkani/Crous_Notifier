@@ -101,9 +101,10 @@ class WhatsAppService {
     this.clearReconnectTimer()
     this.setStatus({ ...this.status, state: 'initializing', ready: false, qrCode: null, expectedPhoneNumber, error: null })
     const { state, saveCreds } = await this.useAuthState()
-    const waVersion = [2, 3000, 1033893291]
+    let waVersion = [2, 3000, 1035194821]
     try {
       const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion()
+      if (Array.isArray(latestVersion) && latestVersion.length === 3) waVersion = latestVersion
       await addLog({
         type: 'whatsapp',
         message: `Using WhatsApp Web version ${waVersion.join('.')} for QR registration`,
