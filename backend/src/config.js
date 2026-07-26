@@ -13,6 +13,7 @@ const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   publicBaseUrl: process.env.PUBLIC_BASE_URL || 'https://automation.al-shifae.ma',
   crousToolId: '47',
+  crousAcademicYear: process.env.CROUS_ACADEMIC_YEAR || '2026-2027',
   crousMaxPages: Number(process.env.CROUS_MAX_PAGES || 5),
   scrapeIntervalMs: Number(process.env.SCRAPE_INTERVAL_MS || 60000),
   noResultWhatsAppIntervalMs: Number(process.env.NO_RESULT_WHATSAPP_INTERVAL_MS || 30 * 60 * 1000),

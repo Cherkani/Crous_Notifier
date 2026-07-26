@@ -91,6 +91,7 @@ async function getStateFromConnection(connection) {
     whatsappRecipient: row.whatsapp_recipient || '',
     emailRecipient: row.email_recipient || '',
     lastSeenTitles: parseJson(row.last_seen_titles, []),
+    listingHistory: parseJson(row.listing_history, []),
     lastCheckedAt: toIso(row.last_checked_at),
     lastResultCount: row.last_result_count || 0,
     lastError: row.last_error || null,
@@ -213,6 +214,7 @@ async function replaceState(connection, state) {
     watch.whatsappRecipient || '',
     watch.emailRecipient || '',
     JSON.stringify(watch.lastSeenTitles || []),
+    JSON.stringify(watch.listingHistory || []),
     toDate(watch.lastCheckedAt),
     Number(watch.lastResultCount || 0),
     watch.lastError || null,
@@ -223,7 +225,7 @@ async function replaceState(connection, state) {
     await connection.query(`
       INSERT INTO watches (
         id, name, url, enabled, notify_whatsapp, notify_email, whatsapp_recipient, email_recipient,
-        last_seen_titles, last_checked_at, last_result_count, last_error, last_no_result_whatsapp_at, created_at
+        last_seen_titles, listing_history, last_checked_at, last_result_count, last_error, last_no_result_whatsapp_at, created_at
       ) VALUES ?
     `, [watchRows])
   }
@@ -249,6 +251,40 @@ async function replaceState(connection, state) {
 async function getState() {
   const state = await getStateFromConnection(getPool())
   return clone(state)
+}
+
+async function purgeOldData({ days = 7 } = {}) {
+  const cutoff = new Date(Date.now() - Number(days) * 24 * 60 * 60 * 1000)
+  const connection = await getPool().getConnection()
+  try {
+    await connection.beginTransaction()
+    const deleted = {}
+    for (const table of ['app_logs', 'alert_email_events', 'delivery_events', 'check_events']) {
+      const [result] = await connection.query(`DELETE FROM ${table} WHERE created_at < ?`, [cutoff])
+      deleted[table] = result.affectedRows || 0
+    }
+
+    const [watchRows] = await connection.query('SELECT id, listing_history FROM watches FOR UPDATE')
+    let removedListings = 0
+    for (const row of watchRows) {
+      const history = parseJson(row.listing_history, [])
+      if (!Array.isArray(history)) continue
+      const retained = history.filter((item) => (
+        item.available !== false || !item.lastSeenAt || new Date(item.lastSeenAt) >= cutoff
+      ))
+      if (retained.length !== history.length) {
+        removedListings += history.length - retained.length
+        await connection.query('UPDATE watches SET listing_history = ? WHERE id = ?', [JSON.stringify(retained), row.id])
+      }
+    }
+    await connection.commit()
+    return { days: Number(days), cutoff: cutoff.toISOString(), deleted, removedListings }
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
 }
 
 async function updateState(updater) {
@@ -363,6 +399,7 @@ async function recordDeliveryEvent({
 module.exports = {
   addLog,
   getState,
+  purgeOldData,
   recordAlertEmailEvent,
   recordCheckEvent,
   recordDeliveryEvent,

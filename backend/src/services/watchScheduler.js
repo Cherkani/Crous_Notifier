@@ -3,6 +3,7 @@ const { scrapeCrous } = require('./crousScraper')
 const {
   notifyNewListings,
   notifyNoListingsWhatsApp,
+  notifyUnavailableListings,
   notifyWatchIssueEmail,
   sendDailyEmailSummaryIfDue,
 } = require('./notificationService')
@@ -100,12 +101,54 @@ class WatchScheduler {
       const newListings = listings.filter((item) => !previousKeys.has(listingKey(item)))
       const isFirstRun = !watch.lastCheckedAt
       const effectiveNewCount = isFirstRun ? 0 : newListings.length
+      const savedHistory = Array.isArray(watch.listingHistory) ? watch.listingHistory : []
+      const historyByKey = new Map((watch.lastSeenTitles || []).map((key) => [key, {
+        key,
+        title: key,
+        available: true,
+      }]))
+      for (const item of savedHistory) historyByKey.set(item.key, item)
+      const history = [...historyByKey.values()]
+      const currentKeySet = new Set(currentKeys)
+      const now = new Date().toISOString()
+      const unavailableListings = []
+      for (const listing of listings) {
+        const key = listingKey(listing)
+        if (!key) continue
+        const previous = historyByKey.get(key)
+        historyByKey.set(key, {
+          ...(previous || {}),
+          ...listing,
+          key,
+          firstSeenAt: previous?.firstSeenAt || now,
+          lastSeenAt: now,
+          available: true,
+          missingChecks: 0,
+          disappearedAt: null,
+        })
+      }
+      if (!isFirstRun) {
+        for (const item of history) {
+          if (currentKeySet.has(item.key) || item.available === false) continue
+          const updated = {
+            ...item,
+            missingChecks: Number(item.missingChecks || 0) + 1,
+          }
+          if (updated.missingChecks >= 2) {
+            updated.available = false
+            updated.disappearedAt = item.disappearedAt || now
+            unavailableListings.push(updated)
+          }
+          historyByKey.set(item.key, updated)
+        }
+      }
 
       await updateState((draft) => {
         const target = draft.watches.find((item) => item.id === watch.id)
         if (!target) return
         target.lastCheckedAt = new Date().toISOString()
         target.lastSeenTitles = currentKeys
+        target.listingHistory = [...historyByKey.values()]
         target.lastResultCount = listings.length
         target.lastError = null
       })
@@ -130,8 +173,11 @@ class WatchScheduler {
             if (target) target.lastNoResultWhatsAppAt = new Date().toISOString()
           })
         }
+        if (unavailableListings.length) await notifyUnavailableListings(watch, unavailableListings)
         return
       }
+
+      if (unavailableListings.length) await notifyUnavailableListings(watch, unavailableListings)
 
       if (isFirstRun) {
         await addLog({ type: 'scrape', message: `Initial snapshot for ${watch.name}: ${listings.length} listing(s)` })

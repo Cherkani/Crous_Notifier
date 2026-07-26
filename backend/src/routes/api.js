@@ -1,6 +1,6 @@
 const express = require('express')
 const config = require('../config')
-const { addLog, getState, recordDeliveryEvent, updateState } = require('../store/mysqlStore')
+const { addLog, getState, purgeOldData, recordDeliveryEvent, updateState } = require('../store/mysqlStore')
 const { scrapeCrous } = require('../services/crousScraper')
 const { buildCrousSearchUrl } = require('../services/crousTargeting')
 const { sendManualNotification } = require('../services/notificationService')
@@ -101,6 +101,16 @@ router.patch('/settings', async (req, res, next) => {
     await addLog({ type: 'settings', message: 'Settings updated' })
     scheduler.restart()
     res.json({ success: true, settings })
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post('/maintenance/purge-old-data', async (req, res, next) => {
+  try {
+    const result = await purgeOldData({ days: 7 })
+    await addLog({ type: 'maintenance', message: 'Purged data older than 7 days', details: result })
+    res.json({ success: true, ...result })
   } catch (error) {
     next(error)
   }

@@ -11,6 +11,7 @@ import {
   Settings,
   ShieldAlert,
   Sun,
+  Trash2,
 } from 'lucide-react'
 
 const navItems = [
@@ -137,7 +138,7 @@ export function Topbar({ whatsappReady, smtpReady, emailEnabled, theme, onToggle
   )
 }
 
-export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, saving }) {
+export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, onPurgeOldData, saving }) {
   const [activeTab, setActiveTab] = useState('receivers')
   const schedule = state?.schedule || {}
   const minutes = (value) => Math.round((Number(value || 0) / 60000) * 10) / 10
@@ -320,6 +321,12 @@ export function ConfigPanel({ state, settingsDraft, setSettingsDraft, onSave, sa
       )}
 
       <button onClick={onSave} disabled={saving}><ShieldAlert size={16} /> Save configuration</button>
+
+      <div className="config-section">
+        <label>Storage cleanup</label>
+        <small className="config-help">Remove logs, notification events, check history, and unavailable listings older than 7 days. Active watches and currently available listings are preserved.</small>
+        <button className="danger-button" type="button" onClick={onPurgeOldData} disabled={saving}><Trash2 size={16} /> Erase data older than 7 days</button>
+      </div>
 
       <div className="config-health">
         <strong>Capture status</strong>

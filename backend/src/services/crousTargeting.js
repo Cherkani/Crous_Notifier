@@ -65,7 +65,6 @@ async function buildCrousSearchUrl({
 }) {
   const place = await resolveCrousPlace(location)
   const url = new URL(`/tools/${config.crousToolId}/search`, CROUS_BASE_URL)
-  if (occupationMode) url.searchParams.set('occupationModes', occupationMode)
   url.searchParams.set('bounds', place.bounds)
   url.searchParams.set('locationName', place.label)
   if (maxPrice) url.searchParams.set('maxPrice', String(maxPrice))

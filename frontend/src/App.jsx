@@ -393,6 +393,11 @@ export default function App() {
     }, 'Configuration saved.')
   }
 
+  const purgeOldData = async () => {
+    if (!window.confirm('Delete logs, events, and unavailable listing history older than 7 days? Active watches will be preserved.')) return
+    await withSaving(() => api.post('/maintenance/purge-old-data'), 'Data older than 7 days was removed.')
+  }
+
   const deleteWatch = async (id) => withSaving(() => api.delete(`/watches/${id}`))
   const checkWatch = async (id) => withSaving(() => api.post(`/watches/${id}/check`), 'Watch checked.')
   const toggleWatch = async (watch) => withSaving(() => api.patch(`/watches/${watch.id}`, { enabled: !watch.enabled }))
@@ -518,12 +523,6 @@ export default function App() {
           <input value={watchForm.name} onChange={(event) => setWatchForm({ ...watchForm, name: event.target.value })} />
           <label>Target city, residence or study place</label>
           <input value={watchForm.targetLocation} onChange={(event) => setWatchForm({ ...watchForm, targetLocation: event.target.value })} placeholder="Aulnoy-lez-Valenciennes (59300)" />
-          <label>Type de cohabitation</label>
-          <select value={watchForm.occupationMode} onChange={(event) => setWatchForm({ ...watchForm, occupationMode: event.target.value })}>
-            <option value="alone">Individuel</option>
-            <option value="house_sharing">Colocation</option>
-            <option value="couple">Couple</option>
-          </select>
           <div className={`url-advice ${watchUrlAdvice.tone}`}>
             <strong>Automatic Crous targeting</strong>
             <span>{watchUrlAdvice.text}</span>
@@ -713,7 +712,7 @@ export default function App() {
     monitoring: renderMonitoring(),
     logs: renderLogs(),
     configuration: (
-      <ConfigPanel state={state} settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} onSave={saveSettings} saving={saving} />
+      <ConfigPanel state={state} settingsDraft={settingsDraft} setSettingsDraft={setSettingsDraft} onSave={saveSettings} onPurgeOldData={purgeOldData} saving={saving} />
     ),
   }
 

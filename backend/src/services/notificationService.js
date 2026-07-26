@@ -311,6 +311,32 @@ async function notifyNoListingsWhatsApp(watch) {
   return { ok: deliveries.some((delivery) => delivery.ok), deliveries }
 }
 
+async function notifyUnavailableListings(watch, listings) {
+  const state = await getState()
+  const recipients = whatsappRecipients(watch, state.settings)
+  if (!watch.notifyWhatsApp || !recipients.length || !listings.length) return { skipped: true }
+
+  const items = listings.map((item) => [
+    `- ${item.title || 'Logement Crous'}`,
+    item.url ? `  ${item.url}` : null,
+  ].filter(Boolean).join('\n')).join('\n')
+  const text = [
+    `Logement(s) Crous plus disponible(s) pour ${watch.name}:`,
+    items,
+    'Le logement n’apparait plus dans les résultats Crous. Cela peut signifier qu’il a été réservé ou retiré; le statut exact n’est pas confirmé.',
+  ].join('\n')
+
+  return sendWhatsAppToRecipients({
+    watch,
+    recipients,
+    text,
+    triggerType: 'listing_unavailable',
+    metadata: { listingCount: listings.length },
+    successLog: `WhatsApp unavailable listing update sent for ${watch.name}`,
+    failureLog: `WhatsApp unavailable listing update failed for ${watch.name}`,
+  })
+}
+
 async function notifyWatchIssueEmail(watch, error) {
   const state = await getState()
   const recipients = emailRecipients(watch, state.settings)
@@ -408,6 +434,7 @@ async function sendManualNotification({ phoneNumber, email, message }) {
 
 module.exports = {
   notifyNoListingsWhatsApp,
+  notifyUnavailableListings,
   notifyNewListings,
   notifyWatchIssueEmail,
   queueDailyEmailSummaryItem,

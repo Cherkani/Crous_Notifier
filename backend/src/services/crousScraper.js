@@ -42,6 +42,19 @@ function looksLikeNotFound($) {
   return title.includes('page non trouvée') || body.includes('page non trouvée')
 }
 
+function normalizeAcademicYear(value) {
+  return cleanText(value).replace(/[‐‑‒–—―−]/g, '-')
+}
+
+function assertAcademicYear($) {
+  const expectedYear = normalizeAcademicYear(config.crousAcademicYear)
+  if (!expectedYear) return
+  const pageText = normalizeAcademicYear($('body').text())
+  if (!pageText.includes(expectedYear)) {
+    throw new Error(`Crous page is not for the ${expectedYear} academic year`)
+  }
+}
+
 function parseResultCount($) {
   const heading = cleanText($('h2.SearchResults-desktop').first().text() || $('h2').filter((_, element) => {
     const text = cleanText($(element).text()).toLowerCase()
@@ -179,6 +192,7 @@ async function scrapeCrousPage(url) {
   if (response.status === 404 || looksLikeNotFound($)) {
     throw new Error('Crous search URL returned a 404 page. Re-copy the URL from the live Crous search after selecting a city/zone.')
   }
+  assertAcademicYear($)
 
   const cards = []
 
